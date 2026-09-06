@@ -1,0 +1,40 @@
+import { createContext, useContext, useMemo, useReducer } from 'react'
+import { projectReducer } from './projectReducer'
+import { projectActions } from './projectActions'
+import { selectBlocks, selectCurrentBlock, selectCurrentBlockIndex } from './projectSelectors'
+
+const ProjectStoreContext = createContext(null)
+const initialState = { project: null, current: null, dirty: false, undo: [], redo: [], revision: 0, savedRevision: 0, saveStatus: 'saved', saveError: null, activeTextEdit: null, notice: null }
+
+export function ProjectStoreProvider({ children }) {
+  const [state, dispatch] = useReducer(projectReducer, initialState)
+  const commands = useMemo(() => ({
+    load: project => dispatch(projectActions.load(project)), selectBlock: blockId => dispatch(projectActions.selectBlock(blockId)), selectSource: sourceId => dispatch(projectActions.selectSource(sourceId)),
+    updateBlockText: (blockId, text) => dispatch(projectActions.updateText(blockId, text, Date.now())), completeCurrentBlock: () => dispatch(projectActions.complete()),
+    addAssetToCurrentBlock: (sourceId, crop) => dispatch(projectActions.addAsset(sourceId, crop)), moveCurrentBlock: direction => dispatch(projectActions.move(direction)), duplicateCurrentBlock: () => dispatch(projectActions.duplicate()), deleteCurrentBlock: () => dispatch(projectActions.remove()),
+    removeAsset: (blockId, assetId) => dispatch(projectActions.removeAsset(blockId, assetId)), toggleFavorite: sourceId => dispatch(projectActions.toggleFavorite(sourceId)), addBasketItem: (sourceId, crop) => dispatch(projectActions.addBasketItem(sourceId, crop)), removeBasketItem: itemId => dispatch(projectActions.removeBasketItem(itemId)), reorderBasket: (itemId, toIndex) => dispatch(projectActions.reorderBasket(itemId, toIndex)), clearBasket: () => dispatch(projectActions.clearBasket()), addBasketItemToBlock: (itemId, blockId) => dispatch(projectActions.addBasketItemToBlock(itemId, blockId)), setBlockStatus: (blockId, key, value) => dispatch(projectActions.setBlockStatus(blockId, key, value)),
+    undo: () => dispatch(projectActions.undo()), redo: () => dispatch(projectActions.redo()), commitTextHistory: () => dispatch(projectActions.commitTextHistory()),
+    saveStarted: () => dispatch(projectActions.saveStarted()), saveSucceeded: revision => dispatch(projectActions.saveSucceeded(revision)), saveFailed: error => dispatch(projectActions.saveFailed(error)), clearNotice: () => dispatch(projectActions.clearNotice())
+  }), [dispatch])
+  const value = useMemo(() => {
+    const blocks = selectBlocks(state)
+    const currentBlock = selectCurrentBlock(state)
+    const currentBlockIndex = selectCurrentBlockIndex(state)
+    return {
+      state,
+      dispatch,
+      ...state,
+      blocks,
+      currentBlock,
+      currentBlockIndex,
+      commands
+    }
+  }, [state, commands])
+  return <ProjectStoreContext.Provider value={value}>{children}</ProjectStoreContext.Provider>
+}
+
+export function useProjectStore() {
+  const value = useContext(ProjectStoreContext)
+  if (!value) throw new Error('useProjectStore must be used within ProjectStoreProvider')
+  return value
+}
