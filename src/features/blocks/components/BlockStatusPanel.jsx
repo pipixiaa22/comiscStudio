@@ -1,4 +1,4 @@
-import {ChevronDown, ChevronUp, Copy, Redo2, Trash2, Undo2} from 'lucide-react'
+import {ChevronDown, ChevronUp, Copy, ImageOff, MicOff, Redo2, TextCursorInput, Trash2, Undo2} from 'lucide-react'
 import {Button} from '../../../components/ui/button'
 import {Card, CardContent} from '../../../components/ui/card'
 import {pageNumber} from '../../../shared/lib/pageNumber'
@@ -55,6 +55,7 @@ export function BlockStatusPanel({
                                                           onClick={commands.deleteCurrentBlock}><Trash2
                 className="h-4 w-4"/>删除</Button></div>
         </CardContent></Card>
+        <Card className="mt-3"><CardContent className="space-y-2 py-3"><h3 className="text-xs font-semibold text-slate-300">下一待办</h3><p className="text-xs text-slate-500">跳过已完成项，不会自动完成当前段。</p><div className="grid grid-cols-3 gap-1"><Button size="sm" variant="secondary" onClick={() => commands.selectNextTodo('text')} title="下一未写文案"><TextCursorInput className="h-3.5 w-3.5"/>文案</Button><Button size="sm" variant="secondary" onClick={() => commands.selectNextTodo('assets')} title="下一未配图"><ImageOff className="h-3.5 w-3.5"/>配图</Button>{narrationMode === 'voice' && <Button size="sm" variant="secondary" onClick={() => commands.selectNextTodo('voice')} title="下一待录音"><MicOff className="h-3.5 w-3.5"/>录音</Button>}</div></CardContent></Card>
         <BlockAssetList assets={block.assets} sourcesById={sourcesById} selectedAssetId={selectedAssetId}
                         onSelect={onSelectAsset} onLocate={onLocateAsset}
                         onRemove={assetId => commands.removeAsset(block.id, assetId)}

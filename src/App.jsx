@@ -229,7 +229,7 @@ export default function App() {
                                          className="bg-slate-800 px-4 py-2 text-center text-sm text-slate-200">{error || state.notice}</div>}
         {view === 'projects' ? <ProjectCenter onOpen={openProject} onClose={() => setView('workspace')}/> : !project ?
             <Welcome onImport={importSource}/> : view === 'export' ?
-                <ExportView project={project} revision={state.revision}
+                <ExportView project={project} revision={state.revision} onSavePreset={commands.saveExportPreset} onRemovePreset={commands.removeExportPreset} onRecordDelivery={commands.recordDelivery}
                             onClose={() => setView('workspace')}/> : view === 'storyboard' ?
                     <StoryboardView project={project} revision={state.revision} sourcesById={sourcesById}
                                     restoreBlockId={storyReturnBlockId} onEditBlock={editStoryboardBlock}

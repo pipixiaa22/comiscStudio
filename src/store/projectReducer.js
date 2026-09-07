@@ -156,6 +156,103 @@ export function projectReducer(state, action) {
                 project.blocks = project.blocks.map((block, order) => ({...block, order}));
                 project.workspace.currentBlockId = next.id
             })
+        case 'INSERT_TEXT_BLOCKS': {
+            const texts = (action.texts || []).map(text => String(text)).filter(text => text.trim())
+            if (!texts.length) return {...state, notice: '没有可导入的非空段落'}
+            return contentUpdate(state, project => {
+                const requested = project.blocks.findIndex(block => block.id === action.insertAfterId)
+                const index = requested >= 0 ? requested + 1 : project.blocks.length
+                const inserted = texts.map((text, offset) => ({...createBlock(index + offset), text, updatedAt: now()}))
+                const onlyEmpty = project.blocks.length === 1 && !project.blocks[0].text.trim() && !project.blocks[0].assets.length
+                if (onlyEmpty) project.blocks = inserted
+                else project.blocks.splice(index, 0, ...inserted)
+                project.blocks = project.blocks.map((block, order) => ({...block, order}))
+                project.workspace.currentBlockId = inserted[0].id
+            })
+        }
+        case 'SPLIT_BLOCK': {
+            const block = state.project.blocks.find(item => item.id === action.blockId)
+            const offset = Number(action.offset)
+            if (!block || !Number.isInteger(offset) || offset <= 0 || offset >= block.text.length) return state
+            if (block.voice?.takes?.length) return {...state, notice: '已有录音的段落暂不能拆分，以免破坏音频边界'}
+            return contentUpdate(state, project => {
+                const index = project.blocks.findIndex(item => item.id === action.blockId)
+                const target = project.blocks[index], next = createBlock(index + 1)
+                target.text = target.text.slice(0, offset)
+                target.status = {...target.status, scriptDone: false}
+                target.updatedAt = now()
+                next.text = block.text.slice(offset)
+                project.blocks.splice(index + 1, 0, next)
+                project.blocks = project.blocks.map((item, order) => ({...item, order}))
+                project.workspace.currentBlockId = next.id
+            })
+        }
+        case 'MERGE_WITH_NEXT': {
+            const index = state.project.blocks.findIndex(item => item.id === action.blockId)
+            const block = state.project.blocks[index], next = state.project.blocks[index + 1]
+            if (!block || !next) return {...state, notice: '没有可合并的下一段'}
+            if (block.voice?.takes?.length || next.voice?.takes?.length) return {...state, notice: '含有录音的段落暂不能合并，以免破坏音频边界'}
+            return contentUpdate(state, project => {
+                const target = project.blocks[index], following = project.blocks[index + 1]
+                target.text = `${target.text}${target.text && following.text ? '\n' : ''}${following.text}`
+                target.assets = [...target.assets, ...following.assets].map((asset, order) => ({...asset, order}))
+                target.status = {...target.status, scriptDone: false, assetDone: false}
+                target.updatedAt = now()
+                project.blocks.splice(index + 1, 1)
+                project.blocks = project.blocks.map((item, order) => ({...item, order}))
+                project.workspace.currentBlockId = target.id
+            })
+        }
+        case 'BULK_BLOCKS': {
+            const ids = [...new Set(action.blockIds || [])].filter(id => state.project.blocks.some(block => block.id === id))
+            if (!ids.length) return state
+            return contentUpdate(state, project => {
+                const selected = project.blocks.filter(block => ids.includes(block.id))
+                if (action.operation === 'up') {
+                    for (let index = 1; index < project.blocks.length; index++) if (ids.includes(project.blocks[index].id) && !ids.includes(project.blocks[index - 1].id)) [project.blocks[index - 1], project.blocks[index]] = [project.blocks[index], project.blocks[index - 1]]
+                }
+                if (action.operation === 'down') {
+                    for (let index = project.blocks.length - 2; index >= 0; index--) if (ids.includes(project.blocks[index].id) && !ids.includes(project.blocks[index + 1].id)) [project.blocks[index], project.blocks[index + 1]] = [project.blocks[index + 1], project.blocks[index]]
+                }
+                if (action.operation === 'todo') selected.forEach(block => { block.status = {...block.status, scriptDone: false, assetDone: false, voiced: false, edited: false, effectDone: false} })
+                if (action.operation === 'copy') {
+                    const copies = selected.map(block => ({...structuredClone(block), id: createId(), assets: block.assets.map(asset => ({...structuredClone(asset), id: createId()})), createdAt: now(), updatedAt: now()}))
+                    const last = Math.max(...project.blocks.map(block => ids.includes(block.id) ? block.order : -1))
+                    project.blocks.splice(last + 1, 0, ...copies)
+                    project.workspace.currentBlockId = copies[0].id
+                }
+                if (action.operation === 'delete') {
+                    project.blocks = project.blocks.filter(block => !ids.includes(block.id))
+                    if (!project.blocks.length) project.blocks = [createBlock()]
+                    project.workspace.currentBlockId = project.blocks[0].id
+                }
+                project.blocks = project.blocks.map((block, order) => ({...block, order}))
+            })
+        }
+        case 'SELECT_NEXT_TODO': {
+            const currentIndex = state.project.blocks.findIndex(block => block.id === state.current)
+            const required = block => action.kind === 'assets' ? !block.assets.length : action.kind === 'voice' ? block.voice?.narrationRequired !== false && !block.voice?.activeTakeId : !block.text.trim()
+            const ordered = [...state.project.blocks.slice(currentIndex + 1), ...state.project.blocks.slice(0, currentIndex + 1)]
+            const target = ordered.find(required)
+            return target ? updateWorkspace(state, {currentBlockId: target.id}) : {...state, notice: '没有待处理的 Block'}
+        }
+        case 'SAVE_EXPORT_PRESET': {
+            const name = String(action.name || '').trim().slice(0, 60)
+            if (!name || !action.options) return {...state, notice: '请输入预设名称'}
+            return contentUpdate(state, project => {
+                const preset = {id: createId(), name, options: structuredClone(action.options), updatedAt: now()}
+                const previous = project.exportPresets.findIndex(item => item.name === name)
+                if (previous >= 0) project.exportPresets.splice(previous, 1, preset); else project.exportPresets.push(preset)
+            })
+        }
+        case 'REMOVE_EXPORT_PRESET':
+            return state.project.exportPresets?.some(item => item.id === action.id) ? contentUpdate(state, project => {
+                project.exportPresets = project.exportPresets.filter(item => item.id !== action.id)
+            }) : state
+        case 'RECORD_DELIVERY':
+            return action.delivery?.id ? contentUpdate(state, project => {
+                project.deliveries = [action.delivery, ...(project.deliveries || [])].slice(0, 20)
+            }) : state
         case 'ADD_ASSET': {
             if (!state.project.sources.some(source => source.id === action.sourceId && source.mediaType === 'image') || !isValidCrop(action.crop)) return {
                 ...state,

@@ -1,9 +1,12 @@
 import {useEffect, useMemo, useState} from 'react'
-import {FolderOpen, Play, X} from 'lucide-react'
+import {FolderOpen, Play, Save, Trash2, X} from 'lucide-react'
 import {Button} from '../../../components/ui/button'
 import {mangaDeskBridge} from '../../../shared/bridge/mangaDeskBridge'
+import {createId} from '../../../shared/lib/ids'
 
-export function ExportView({project, revision, onClose}) {
+const fingerprint = block => JSON.stringify({text: block.text, assets: block.assets, voice: {activeTakeId: block.voice?.activeTakeId, trimStartMs: block.voice?.trimStartMs, trimEndMs: block.voice?.trimEndMs}})
+
+export function ExportView({project, revision, onClose, onSavePreset, onRemovePreset, onRecordDelivery}) {
     const [destination, setDestination] = useState(null)
     const [packageName, setPackageName] = useState(() => String(project.name || '素材包').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/, '') || '素材包')
     const [options, setOptions] = useState({
@@ -18,6 +21,8 @@ export function ExportView({project, revision, onClose}) {
     const [preflight, setPreflight] = useState(null)
     const [confirmedWarnings, setConfirmedWarnings] = useState(false)
     const [job, setJob] = useState(null)
+    const [presetName, setPresetName] = useState('')
+    const [baselineId, setBaselineId] = useState('')
     const [progress, setProgress] = useState({stage: 'idle', completed: 0, total: 0})
     const input = useMemo(() => ({
         projectSnapshot: project,
@@ -51,6 +56,10 @@ export function ExportView({project, revision, onClose}) {
     useEffect(() => mangaDeskBridge.onExportProgress(event => {
         if (event.jobId === job) setProgress(event)
     }), [job])
+    useEffect(() => {
+        if (progress.stage !== 'succeeded' || !progress.output || !onRecordDelivery) return
+        onRecordDelivery({id: createId(), createdAt: Date.now(), revision, output: progress.output, options: input.options, blocks: project.blocks.map(block => ({id: block.id, fingerprint: fingerprint(block)}))})
+    }, [progress.stage, progress.output])
     const running = ['validating', 'rendering', 'writingDocuments', 'finalizing'].includes(progress.stage)
     const completed = progress.stage === 'succeeded'
     return <main className="min-h-0 flex-1 overflow-auto bg-[#0d1118] p-6">
@@ -147,6 +156,8 @@ export function ExportView({project, revision, onClose}) {
                     </div>
                 </section>
             </div>
+            <section className="mt-4 rounded border border-slate-700 bg-slate-900/40 p-3"><div className="flex flex-wrap items-center gap-2"><b className="text-sm">导出预设</b><select className="h-8 rounded border border-slate-600 bg-slate-950 px-2 text-xs" defaultValue="" onChange={event => { const preset = project.exportPresets?.find(item => item.id === event.target.value); if (preset) setOptions(value => ({...value, ...preset.options})) }}><option value="">选择预设…</option>{(project.exportPresets || []).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select><input value={presetName} onChange={event => setPresetName(event.target.value)} placeholder="预设名称" className="h-8 w-28 rounded border border-slate-600 bg-slate-950 px-2 text-xs"/><Button size="sm" variant="secondary" onClick={() => { onSavePreset(presetName, options); setPresetName('') }}><Save className="h-3.5 w-3.5"/>保存</Button>{(project.exportPresets || []).length > 0 && <Button size="sm" variant="ghost" className="text-slate-400" onClick={() => { const item = project.exportPresets.at(-1); if (item) onRemovePreset(item.id) }}><Trash2 className="h-3.5 w-3.5"/>删除最近</Button>}</div><p className="mt-2 text-xs text-slate-400">预设只保存导出参数，不保存素材或输出目录。</p></section>
+            {(project.deliveries || []).length > 0 && <section className="mt-4 rounded border border-slate-700 bg-slate-900/40 p-3"><b className="text-sm">交付版本对比</b><div className="mt-2 flex items-center gap-2"><select value={baselineId} onChange={event => setBaselineId(event.target.value)} className="h-8 rounded border border-slate-600 bg-slate-950 px-2 text-xs"><option value="">选择已交付版本…</option>{project.deliveries.map(item => <option key={item.id} value={item.id}>{new Date(item.createdAt).toLocaleString()} · r{item.revision}</option>)}</select>{baselineId && <DeliveryDiff delivery={project.deliveries.find(item => item.id === baselineId)} project={project}/>}</div></section>}
             {!completed && <div className="mt-5 flex gap-2"><Button variant="secondary" disabled={running}
                                                                     onClick={runPreflight}>预检</Button><Button
                 disabled={running} onClick={start}><Play className="h-4 w-4"/>开始导出</Button>{running &&
@@ -184,4 +195,11 @@ export function ExportView({project, revision, onClose}) {
                     SRT；请在剪映导入 narration.wav 后使用“识别字幕”。</p>}
         </div>
     </main>
+}
+
+function DeliveryDiff({delivery, project}) {
+    const prior = new Map(delivery?.blocks?.map(block => [block.id, block.fingerprint]))
+    const changed = project.blocks.filter(block => prior.get(block.id) !== fingerprint(block)).length
+    const removed = [...prior.keys()].filter(id => !project.blocks.some(block => block.id === id)).length
+    return <span className="text-xs text-amber-200">当前变化 {changed} 段 · 已移除 {removed} 段；差异包会保留为后续增强，当前仍建议全量导出。</span>
 }
