@@ -5,7 +5,7 @@ const { normalizeProjectShape } = require('../../src/shared/domain/projectNormal
 
 const now = () => Date.now()
 const id = () => crypto.randomUUID()
-function block(order = 0) { const time = now(); return { id: id(), order, text: '', assets: [], note: '', status: { scriptDone: false, assetDone: false, voiced: false, edited: false, effectDone: false }, createdAt: time, updatedAt: time } }
+function block(order = 0) { const time = now(); return { id: id(), order, text: '', assets: [], note: '', status: { scriptDone: false, assetDone: false, voiced: false, edited: false, effectDone: false }, voice: { activeTakeId: null, takes: [], trimStartMs: 0, trimEndMs: null, gapAfterMs: 300, narrationRequired: true }, createdAt: time, updatedAt: time } }
 function normalize(project) {
   if (!project || typeof project !== 'object' || typeof project.id !== 'string' || !Array.isArray(project.blocks)) throw new Error('项目数据无效')
   return normalizeProjectShape(project, block, now())

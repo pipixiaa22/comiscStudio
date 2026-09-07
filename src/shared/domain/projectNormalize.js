@@ -5,11 +5,12 @@ function normalizeProjectShape(project, createBlock, timestamp) {
     return {
       ...base, ...block, id: typeof block?.id === 'string' ? block.id : base.id, order,
       assets: Array.isArray(block?.assets) ? block.assets.filter(asset => asset?.sourceId).map((asset, assetOrder) => ({ ...asset, order: assetOrder })) : [],
-      status: { ...base.status, ...(block?.status || {}) }
+      status: { ...base.status, ...(block?.status || {}) },
+      voice: { activeTakeId: null, takes: [], trimStartMs: 0, trimEndMs: null, gapAfterMs: 300, narrationRequired: true, ...(block?.voice || {}) }
     }
   })
   const currentBlockId = blocks.some(block => block.id === project.workspace?.currentBlockId) ? project.workspace.currentBlockId : blocks[0].id
-  return { ...project, schemaVersion: 2, blocks, favorites: Array.isArray(project.favorites) ? project.favorites : [], scratchBasket: Array.isArray(project.scratchBasket) ? project.scratchBasket.map((item, order) => ({ ...item, order })) : [], workspace: { currentBlockId, currentSourceId: project.workspace?.currentSourceId || null }, updatedAt: timestamp }
+  return { ...project, schemaVersion: 2, narration: { mode: 'text', defaultGapAfterMs: 300, ...(project.narration || {}) }, blocks, favorites: Array.isArray(project.favorites) ? project.favorites : [], scratchBasket: Array.isArray(project.scratchBasket) ? project.scratchBasket.map((item, order) => ({ ...item, order })) : [], workspace: { currentBlockId, currentSourceId: project.workspace?.currentSourceId || null }, updatedAt: timestamp }
 }
 
 module.exports = { normalizeProjectShape }

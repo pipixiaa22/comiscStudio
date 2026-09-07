@@ -16,6 +16,7 @@
 		"vite": "^8.2.2"
 	},
 	"dependencies": {
+		"@napi-rs/canvas": "^1.0.8",
 		"@radix-ui/react-scroll-area": "^1.2.18",
 		"@radix-ui/react-tooltip": "^1.2.16",
 		"class-variance-authority": "^0.7.1",
@@ -24,6 +25,7 @@
 		"pdfjs-dist": "^6.3.289",
 		"react": "^19.2.8",
 		"react-dom": "^19.2.8",
+		"sharp": "^0.35.4",
 		"tailwind-merge": "^3.6.0"
 	}
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, RefreshCw } from 'lucide-react'
 import { Button } from '../../../components/ui/button'
 import { pageNumber } from '../../../shared/lib/pageNumber'
@@ -12,12 +12,14 @@ export function StoryboardView({ project, revision, sourcesById, restoreBlockId,
   const [checkedAt, setCheckedAt] = useState(null)
   const [checking, setChecking] = useState(false)
   const [filter, setFilter] = useState('all')
+  const current = useRef({ projectId: project.id, revision })
+  current.current = { projectId: project.id, revision }
   const runCheck = async () => {
     const projectId = project.id, checkedRevision = revision
     setChecking(true)
     try {
       const result = await mangaDeskBridge.validateSources(project.sources || [])
-      if (project.id === projectId && revision === checkedRevision) { setSourceStatus(result.sources); setCheckedAt(result.checkedAt) }
+      if (current.current.projectId === projectId && current.current.revision === checkedRevision) { setSourceStatus(result.sources); setCheckedAt(result.checkedAt) }
     } finally { setChecking(false) }
   }
   useEffect(() => { void runCheck() }, [project.id, revision])

@@ -1,10 +1,14 @@
-const { app, BrowserWindow, clipboard, dialog, ipcMain } = require('electron')
+const { app, BrowserWindow, clipboard, dialog, ipcMain, shell } = require('electron')
 const path = require('path')
 const { registerProjectIpc } = require('./electron/ipc/registerProjectIpc')
 const { registerSourceIpc } = require('./electron/ipc/registerSourceIpc')
 const { registerSystemIpc } = require('./electron/ipc/registerSystemIpc')
 const { ProjectService } = require('./electron/services/ProjectService')
 const { SourceScanService } = require('./electron/services/SourceScanService')
+const { ExportService } = require('./electron/services/ExportService')
+const { registerExportIpc } = require('./electron/ipc/registerExportIpc')
+const { VoiceRecordingService } = require('./electron/services/VoiceRecordingService')
+const { registerVoiceIpc } = require('./electron/ipc/registerVoiceIpc')
 
 function createMainWindow() {
   const window = new BrowserWindow({
@@ -18,9 +22,13 @@ function createMainWindow() {
 app.whenReady().then(() => {
   const projectService = new ProjectService(app.getPath('userData'))
   const sourceScanService = new SourceScanService()
-  registerProjectIpc({ ipcMain, projectService, sourceScanService })
+  const exportService = new ExportService(projectService)
+  const voiceRecordingService = new VoiceRecordingService(projectService)
+  registerProjectIpc({ ipcMain, projectService, sourceScanService, exportService })
   registerSourceIpc({ ipcMain, dialog, sourceScanService })
   registerSystemIpc({ ipcMain, clipboard })
+  registerExportIpc({ ipcMain, dialog, shell, exportService })
+  registerVoiceIpc({ ipcMain, voiceRecordingService })
   createMainWindow()
 })
 

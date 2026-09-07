@@ -1,11 +1,12 @@
 import { createId, now } from '../shared/lib/ids'
 import { appendHistory, redoHistory, undoHistory } from './history'
 import { normalizeProjectShape } from '../shared/domain/projectNormalize'
-import { cropKey, isValidCrop } from '../features/assets/model/crop'
+import { cropKey, isValidCrop, normalizeCrop } from '../features/assets/model/crop'
 
 export const createBlock = (order = 0) => ({
   id: createId(), order, text: '', assets: [], note: '',
   status: { scriptDone: false, assetDone: false, voiced: false, edited: false, effectDone: false },
+  voice: { activeTakeId: null, takes: [], trimStartMs: 0, trimEndMs: null, gapAfterMs: 300, narrationRequired: true },
   createdAt: now(), updatedAt: now()
 })
 
@@ -43,18 +44,30 @@ function updateText(state, action) {
 
 export function projectReducer(state, action) {
   switch (action.type) {
-    case 'LOAD': return { ...state, project: normalizeProject(action.project), current: action.project.workspace.currentBlockId, dirty: false, undo: [], redo: [], revision: 0, savedRevision: 0, saveStatus: 'saved', saveError: null, activeTextEdit: null }
+    case 'LOAD': { const project = normalizeProject(action.project); return { ...state, project, current: project.workspace.currentBlockId, dirty: false, undo: [], redo: [], revision: 0, savedRevision: 0, saveStatus: 'saved', saveError: null, activeTextEdit: null, notice: null } }
     case 'WORKSPACE_SOURCE':
     case 'SOURCE': return updateWorkspace(state, { currentSourceId: action.sourceId || action.id })
     case 'WORKSPACE_BLOCK':
     case 'SELECT': return updateWorkspace(state, { currentBlockId: action.blockId || action.id })
     case 'TEXT': return updateText(state, action)
-    case 'COMPLETE': return contentUpdate(state, project => { const index = project.blocks.findIndex(item => item.id === state.current); const block = project.blocks[index]; if (!block) return; block.status.scriptDone = true; let next = project.blocks[index + 1]; if (!next || next.text || next.status.scriptDone) { next = createBlock(index + 1); project.blocks.splice(index + 1, 0, next) } project.workspace.currentBlockId = next.id })
-    case 'ADD_ASSET': return contentUpdate(state, project => { const block = project.blocks.find(item => item.id === state.current); if (block) block.assets.push({ id: createId(), sourceId: action.sourceId, crop: action.crop, order: block.assets.length, createdAt: now() }) })
+    case 'COMPLETE': return contentUpdate(state, project => { const block = project.blocks.find(item => item.id === state.current); if (block) block.status.scriptDone = true })
+    case 'COMPLETE_ADD':
+    case 'ADD_BLOCK': return contentUpdate(state, project => { const index = project.blocks.findIndex(item => item.id === state.current); if (index < 0) return; if (action.type === 'COMPLETE_ADD') project.blocks[index].status.scriptDone = true; const next = createBlock(index + 1); project.blocks.splice(index + 1, 0, next); project.blocks = project.blocks.map((block, order) => ({ ...block, order })); project.workspace.currentBlockId = next.id })
+    case 'ADD_ASSET': {
+      if (!state.project.sources.some(source => source.id === action.sourceId) || !isValidCrop(action.crop)) return { ...state, notice: '素材或裁切范围无效' }
+      return contentUpdate(state, project => { const block = project.blocks.find(item => item.id === state.current); if (block) block.assets.push({ id: createId(), sourceId: action.sourceId, crop: normalizeCrop(action.crop), order: block.assets.length, createdAt: now() }) })
+    }
     case 'REMOVE_ASSET': {
       const block = state.project.blocks.find(item => item.id === action.blockId)
       if (!block?.assets.some(asset => asset.id === action.assetId)) return state
       return contentUpdate(state, project => { const target = project.blocks.find(item => item.id === action.blockId); target.assets = target.assets.filter(asset => asset.id !== action.assetId).map((asset, order) => ({ ...asset, order })); if (!target.assets.length) target.status.assetDone = false })
+    }
+    case 'MOVE_ASSET': {
+      const block = state.project.blocks.find(item => item.id === action.blockId)
+      const from = block?.assets.findIndex(asset => asset.id === action.assetId) ?? -1
+      const to = Math.max(0, Math.min((block?.assets.length || 1) - 1, action.toIndex))
+      if (from < 0 || from === to) return state
+      return contentUpdate(state, project => { const target = project.blocks.find(item => item.id === action.blockId); const [asset] = target.assets.splice(from, 1); target.assets.splice(to, 0, asset); target.assets = target.assets.map((entry, order) => ({ ...entry, order })) })
     }
     case 'TOGGLE_FAVORITE': {
       if (!state.project.sources.some(source => source.id === action.sourceId)) return state
@@ -64,7 +77,7 @@ export function projectReducer(state, action) {
       if (!state.project.sources.some(source => source.id === action.sourceId) || !isValidCrop(action.crop)) return { ...state, notice: '选区无效，请重新框选' }
       const key = `${action.sourceId}:${cropKey(action.crop)}`
       if (state.project.scratchBasket.some(item => `${item.sourceId}:${cropKey(item.crop)}` === key)) return { ...state, notice: '已在素材篮' }
-      return { ...contentUpdate(state, project => { project.scratchBasket.push({ id: createId(), sourceId: action.sourceId, crop: action.crop, order: project.scratchBasket.length, createdAt: now() }) }), notice: '已加入素材篮' }
+      return { ...contentUpdate(state, project => { project.scratchBasket.push({ id: createId(), sourceId: action.sourceId, crop: normalizeCrop(action.crop), order: project.scratchBasket.length, createdAt: now() }) }), notice: '已加入素材篮' }
     }
     case 'REMOVE_BASKET_ITEM': {
       if (!state.project.scratchBasket.some(item => item.id === action.itemId)) return state
@@ -81,13 +94,19 @@ export function projectReducer(state, action) {
       const item = state.project.scratchBasket.find(entry => entry.id === action.itemId)
       const block = state.project.blocks.find(entry => entry.id === action.blockId)
       if (!item || !block || !state.project.sources.some(source => source.id === item.sourceId) || !isValidCrop(item.crop)) return { ...state, notice: '候选或目标 Block 已失效' }
-      return { ...contentUpdate(state, project => { const target = project.blocks.find(entry => entry.id === action.blockId); target.assets.push({ id: createId(), sourceId: item.sourceId, crop: item.crop, order: target.assets.length, createdAt: now() }) }), notice: `已加入 #${String(state.project.blocks.indexOf(block) + 1).padStart(3, '0')}` }
+      return { ...contentUpdate(state, project => { const target = project.blocks.find(entry => entry.id === action.blockId); target.assets.push({ id: createId(), sourceId: item.sourceId, crop: normalizeCrop(item.crop), order: target.assets.length, createdAt: now() }) }), notice: `已加入 #${String(state.project.blocks.indexOf(block) + 1).padStart(3, '0')}` }
     }
     case 'SET_BLOCK_STATUS': {
       const allowed = ['scriptDone', 'assetDone', 'voiced', 'edited', 'effectDone']
       if (!allowed.includes(action.key) || !state.project.blocks.some(block => block.id === action.blockId)) return state
       return contentUpdate(state, project => { const block = project.blocks.find(item => item.id === action.blockId); block.status[action.key] = Boolean(action.value) })
     }
+    case 'SET_NARRATION_MODE': return ['text', 'voice'].includes(action.mode) ? contentUpdate(state, project => { project.narration.mode = action.mode }) : state
+    case 'ADD_VOICE_TAKE': return contentUpdate(state, project => { const block = project.blocks.find(item => item.id === action.blockId); if (!block || !action.take?.id) return; block.voice.takes.push(action.take); block.voice.activeTakeId = action.take.id; block.status.voiced = true })
+    case 'SET_ACTIVE_VOICE_TAKE': return contentUpdate(state, project => { const block = project.blocks.find(item => item.id === action.blockId); if (!block || !block.voice.takes.some(take => take.id === action.takeId)) return; block.voice.activeTakeId = action.takeId; block.status.voiced = true })
+    case 'SET_NARRATION_REQUIRED': return contentUpdate(state, project => { const block = project.blocks.find(item => item.id === action.blockId); if (!block) return; block.voice.narrationRequired = Boolean(action.required); block.status.voiced = !block.voice.narrationRequired || Boolean(block.voice.activeTakeId) })
+    case 'SET_VOICE_TRIM': return contentUpdate(state, project => { const block = project.blocks.find(item => item.id === action.blockId); const take = block?.voice.takes.find(item => item.id === block.voice.activeTakeId); const start = Math.max(0, Number(action.trimStartMs) || 0), end = action.trimEndMs == null ? null : Number(action.trimEndMs); if (!block || !take || (end != null && (!Number.isFinite(end) || end - start < 200 || end > take.durationMs))) return; block.voice.trimStartMs = start; block.voice.trimEndMs = end })
+    case 'REMOVE_VOICE_TAKE': return contentUpdate(state, project => { const block = project.blocks.find(item => item.id === action.blockId); if (!block) return; block.voice.takes = block.voice.takes.filter(take => take.id !== action.takeId); if (block.voice.activeTakeId === action.takeId) block.voice.activeTakeId = block.voice.takes.at(-1)?.id || null; block.status.voiced = !block.voice.narrationRequired || Boolean(block.voice.activeTakeId) })
     case 'MOVE': return contentUpdate(state, project => { const index = project.blocks.findIndex(item => item.id === state.current); const target = index + action.dir; if (target >= 0 && target < project.blocks.length) [project.blocks[index], project.blocks[target]] = [project.blocks[target], project.blocks[index]] })
     case 'DUP': return contentUpdate(state, project => { const index = project.blocks.findIndex(item => item.id === state.current); if (index >= 0) { const copy = { ...structuredClone(project.blocks[index]), id: createId(), createdAt: now(), updatedAt: now() }; project.blocks.splice(index + 1, 0, copy); project.workspace.currentBlockId = copy.id } })
     case 'DELETE': return contentUpdate(state, project => { const index = project.blocks.findIndex(item => item.id === state.current); if (index >= 0) project.blocks.splice(index, 1); if (!project.blocks.length) project.blocks = [createBlock()]; project.workspace.currentBlockId = project.blocks[Math.min(index, project.blocks.length - 1)].id })

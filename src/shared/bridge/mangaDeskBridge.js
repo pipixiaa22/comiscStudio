@@ -19,6 +19,16 @@ export const mangaDeskBridge = {
   choosePdf: () => bridge().choosePdf(),
   readPdf: file => bridge().readPdf(file),
   validateSources: sources => bridge().validateSources(sources),
+  chooseExportDirectory: () => bridge().chooseExportDirectory(),
+  preflightExport: input => bridge().preflightExport(input),
+  startExport: input => bridge().startExport(input),
+  cancelExport: jobId => bridge().cancelExport(jobId),
+  openExportDirectory: jobId => bridge().openExportDirectory(jobId),
+  openExportStoryboard: jobId => bridge().openExportStoryboard(jobId),
+  onExportProgress: callback => bridge().onExportProgress(callback),
+  voice: {
+    start: async input => unwrap(await bridge().voice.start(input)), append: async input => unwrap(await bridge().voice.append(input)), pause: async sessionId => unwrap(await bridge().voice.pause(sessionId)), resume: async sessionId => unwrap(await bridge().voice.resume(sessionId)), finish: async sessionId => unwrap(await bridge().voice.finish(sessionId)), discard: async sessionId => unwrap(await bridge().voice.discard(sessionId)), readTake: async input => unwrap(await bridge().voice.readTake(input)), listRecoverable: async projectId => unwrap(await bridge().voice.listRecoverable(projectId)), recover: async sessionId => unwrap(await bridge().voice.recover(sessionId)), trashTake: async input => unwrap(await bridge().voice.trashTake(input)), restoreTake: async input => unwrap(await bridge().voice.restoreTake(input))
+  },
   copyText: text => bridge().copyText(text)
 }
 export { BridgeError }
