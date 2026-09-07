@@ -39,9 +39,10 @@ function createExportPlan(project, options = {}) {
   if (!project || typeof project.id !== 'string' || !Array.isArray(project.blocks) || !Array.isArray(project.sources)) return { errors: [{ code: 'INVALID_PROJECT', message: '项目结构无效' }], warnings, plan: null }
   if (!project.blocks.length) errors.push({ code: 'EMPTY_PROJECT', message: '项目没有 Block，无法导出' })
   const sourceById = new Map(project.sources.map(source => [source.id, source]))
-  const blocks = [...project.blocks].sort((left, right) => left.order - right.order)
+  // Array position is the canonical order in an in-memory snapshot.  This also
+  // accepts a snapshot taken between a MOVE and its persistence/reindexing.
+  const blocks = project.blocks.map((block, order) => ({ ...block, order }))
   const blockIds = new Set()
-  if (!hasContinuousOrders(project.blocks)) errors.push({ code: 'INVALID_BLOCK_ORDER', message: 'Block order must start at 0 and be continuous' })
   for (const block of blocks) { if (blockIds.has(block.id)) errors.push({ code: 'DUPLICATE_BLOCK', message: 'Block ID 重复' }); blockIds.add(block.id) }
   const maxAssets = Math.max(1, ...blocks.map(block => (block.assets || []).length))
   const blockDigits = Math.max(3, String(blocks.length).length), assetDigits = Math.max(2, String(maxAssets).length)
@@ -65,7 +66,8 @@ function createExportPlan(project, options = {}) {
     })
     entries.push({ block, position: blockIndex + 1, assets: planAssets })
   })
-  return { errors, warnings, plan: errors.length ? null : { project, entries, assets: entries.flatMap(entry => entry.assets), blockDigits, assetDigits, narrationMode } }
+  const canonicalProject = { ...project, blocks }
+  return { errors, warnings, plan: errors.length ? null : { project: canonicalProject, entries, assets: entries.flatMap(entry => entry.assets), blockDigits, assetDigits, narrationMode } }
 }
 
 module.exports = { createExportPlan, validatePackageName, sourceFile, sourcePage }

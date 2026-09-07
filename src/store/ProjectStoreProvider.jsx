@@ -1,4 +1,5 @@
-import {createContext, useContext, useMemo, useReducer} from 'react'
+import {createContext, useContext, useEffect, useMemo, useReducer} from 'react'
+import {mangaDeskBridge} from '../shared/bridge/mangaDeskBridge'
 import {projectReducer} from './projectReducer'
 import {projectActions} from './projectActions'
 import {selectBlocks, selectCurrentBlock, selectCurrentBlockIndex} from './projectSelectors'
@@ -20,6 +21,10 @@ const initialState = {
 
 export function ProjectStoreProvider({children}) {
     const [state, dispatch] = useReducer(projectReducer, initialState)
+    useEffect(() => {
+        if (!state.pendingVoiceRestore) return
+        void mangaDeskBridge.voice.restoreTake(state.pendingVoiceRestore).finally(() => dispatch({type: 'VOICE_RESTORE_HANDLED'}))
+    }, [state.pendingVoiceRestore])
     const commands = useMemo(() => ({
         load: project => dispatch(projectActions.load(project)),
         selectBlock: blockId => dispatch(projectActions.selectBlock(blockId)),
@@ -46,7 +51,7 @@ export function ProjectStoreProvider({children}) {
         setActiveVoiceTake: (blockId, takeId) => dispatch(projectActions.setActiveVoiceTake(blockId, takeId)),
         setNarrationRequired: (blockId, required) => dispatch(projectActions.setNarrationRequired(blockId, required)),
         setVoiceTrim: (blockId, trimStartMs, trimEndMs) => dispatch(projectActions.setVoiceTrim(blockId, trimStartMs, trimEndMs)),
-        removeVoiceTake: (blockId, takeId) => dispatch(projectActions.removeVoiceTake(blockId, takeId)),
+        removeVoiceTake: (blockId, takeId, trashId) => dispatch(projectActions.removeVoiceTake(blockId, takeId, trashId)),
         undo: () => dispatch(projectActions.undo()),
         redo: () => dispatch(projectActions.redo()),
         commitTextHistory: () => dispatch(projectActions.commitTextHistory()),

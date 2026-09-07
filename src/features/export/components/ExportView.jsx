@@ -58,7 +58,7 @@ export function ExportView({project, revision, onClose}) {
             <div className="flex items-center">
                 <div><h1 className="text-xl font-bold">导出素材包</h1><p
                     className="mt-1 text-sm text-slate-400">导出固定快照；之后的修改不会混入本次产物。</p></div>
-                <Button className="ml-auto" variant="ghost" onClick={onClose}><X className="h-4 w-4"/>返回</Button>
+                <Button className="ml-auto" variant="ghost" disabled={running} onClick={onClose}><X className="h-4 w-4"/>返回</Button>
             </div>
             <div className="mt-5 grid gap-4 md:grid-cols-2"><label className="text-sm">素材包名称<input
                 value={packageName} disabled={running || completed} onChange={event => {

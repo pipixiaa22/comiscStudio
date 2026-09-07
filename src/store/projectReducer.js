@@ -14,7 +14,7 @@ export function normalizeProject(project) {
     return normalizeProjectShape(project, createBlock, now())
 }
 
-const contentUpdate = (state, mutate, {recordHistory = true} = {}) => {
+const contentUpdate = (state, mutate, {recordHistory = true, historySnapshot = state.project} = {}) => {
     const project = normalizeProject(structuredClone(state.project))
     mutate(project)
     return {
@@ -23,8 +23,8 @@ const contentUpdate = (state, mutate, {recordHistory = true} = {}) => {
         current: project.workspace.currentBlockId,
         dirty: true,
         revision: state.revision + 1,
-        undo: recordHistory ? appendHistory(state.undo, state.project) : state.undo,
-        redo: recordHistory ? [] : state.redo,
+        undo: recordHistory ? appendHistory(state.undo, historySnapshot) : historySnapshot === state.project ? state.undo : appendHistory(state.undo, historySnapshot),
+        redo: recordHistory || historySnapshot !== state.project ? [] : state.redo,
         activeTextEdit: null
     }
 }
@@ -239,6 +239,8 @@ export function projectReducer(state, action) {
                 if (!block || !action.take?.id) return;
                 block.voice.takes.push(action.take);
                 block.voice.activeTakeId = action.take.id;
+                block.voice.trimStartMs = 0;
+                block.voice.trimEndMs = action.take.durationMs;
                 block.status.voiced = true
             })
         case 'SET_ACTIVE_VOICE_TAKE':
@@ -246,6 +248,9 @@ export function projectReducer(state, action) {
                 const block = project.blocks.find(item => item.id === action.blockId);
                 if (!block || !block.voice.takes.some(take => take.id === action.takeId)) return;
                 block.voice.activeTakeId = action.takeId;
+                const take = block.voice.takes.find(item => item.id === action.takeId);
+                block.voice.trimStartMs = 0;
+                block.voice.trimEndMs = take.durationMs;
                 block.status.voiced = true
             })
         case 'SET_NARRATION_REQUIRED':
@@ -265,19 +270,35 @@ export function projectReducer(state, action) {
                 block.voice.trimStartMs = start;
                 block.voice.trimEndMs = end
             })
-        case 'REMOVE_VOICE_TAKE':
+        case 'REMOVE_VOICE_TAKE': {
+            // Keep the trash token in the undo snapshot so restoring project
+            // metadata also restores the corresponding WAV.
+            const historySnapshot = normalizeProject(structuredClone(state.project));
+            const historyBlock = historySnapshot.blocks.find(item => item.id === action.blockId);
+            const historyTake = historyBlock?.voice.takes.find(item => item.id === action.takeId);
+            if (!historyTake || !action.trashId) return state;
+            historyTake.trashId = action.trashId;
             return contentUpdate(state, project => {
                 const block = project.blocks.find(item => item.id === action.blockId);
                 if (!block) return;
                 block.voice.takes = block.voice.takes.filter(take => take.id !== action.takeId);
-                if (block.voice.activeTakeId === action.takeId) block.voice.activeTakeId = block.voice.takes.at(-1)?.id || null;
+                if (block.voice.activeTakeId === action.takeId) {
+                    const next = block.voice.takes.at(-1);
+                    block.voice.activeTakeId = next?.id || null;
+                    block.voice.trimStartMs = 0;
+                    block.voice.trimEndMs = next?.durationMs ?? null;
+                }
                 block.status.voiced = !block.voice.narrationRequired || Boolean(block.voice.activeTakeId)
-            })
+            }, {recordHistory: false, historySnapshot})
+        }
         case 'MOVE':
             return contentUpdate(state, project => {
                 const index = project.blocks.findIndex(item => item.id === state.current);
                 const target = index + action.dir;
-                if (target >= 0 && target < project.blocks.length) [project.blocks[index], project.blocks[target]] = [project.blocks[target], project.blocks[index]]
+                if (target >= 0 && target < project.blocks.length) {
+                    [project.blocks[index], project.blocks[target]] = [project.blocks[target], project.blocks[index]];
+                    project.blocks = project.blocks.map((block, order) => ({...block, order}))
+                }
             })
         case 'DUP':
             return contentUpdate(state, project => {
@@ -302,13 +323,19 @@ export function projectReducer(state, action) {
             })
         case 'COMMIT_TEXT_HISTORY':
             return {...state, activeTextEdit: null}
-        case 'UNDO':
-            return state.undo.length ? {
+        case 'UNDO': {
+            if (!state.undo.length) return state
+            const target = state.undo.at(-1);
+            const restoredTake = target.blocks.flatMap(block => (block.voice?.takes || []).map(take => ({block, take})))
+                .find(({block, take}) => take.trashId && !state.project.blocks.find(current => current.id === block.id)?.voice?.takes.some(current => current.id === take.id));
+            return {
                 ...undoHistory(state),
                 dirty: true,
                 revision: state.revision + 1,
-                activeTextEdit: null
-            } : state
+                activeTextEdit: null,
+                pendingVoiceRestore: restoredTake ? {projectId: target.id, trashId: restoredTake.take.trashId, relativePath: restoredTake.take.relativePath} : null
+            }
+        }
         case 'REDO':
             return state.redo.length ? {
                 ...redoHistory(state),
@@ -316,6 +343,8 @@ export function projectReducer(state, action) {
                 revision: state.revision + 1,
                 activeTextEdit: null
             } : state
+        case 'VOICE_RESTORE_HANDLED':
+            return {...state, pendingVoiceRestore: null}
         case 'SAVE_STARTED':
             return {...state, saveStatus: 'saving', saveError: null}
         case 'SAVE_SUCCEEDED':

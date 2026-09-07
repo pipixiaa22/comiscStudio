@@ -78,7 +78,7 @@ export function BlockEditor({
                                                 onSetActiveTake={takeId => onSetActiveVoiceTake(entry.id, takeId)}
                                                 onSetRequired={required => onSetNarrationRequired(entry.id, required)}
                                                 onSetTrim={(start, end) => onSetVoiceTrim(entry.id, start, end)}
-                                                onRemoveTake={takeId => onRemoveVoiceTake(entry.id, takeId)}/>}
+                                                onRemoveTake={(takeId, trashId) => onRemoveVoiceTake(entry.id, takeId, trashId)}/>}
                     </CardContent>}</Card>
             })}</div>
         </ScrollAreaBox></section>

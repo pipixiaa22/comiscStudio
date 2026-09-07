@@ -18,7 +18,11 @@ async function renderAsset(asset, output, options) {
   const file = sourceFile(asset.source)
   const before = await fingerprint(file)
   const isPdf = path.extname(file).toLowerCase() === '.pdf'
-  let image = isPdf ? sharp(await renderPdfPage(file, sourcePage(asset.source), options.pdfDpi || 200)) : sharp(file, { animated: false }).rotate()
+  // Materialize EXIF rotation before reading dimensions: metadata on a rotated
+  // pipeline still describes the encoded JPEG, not its displayed orientation.
+  let image
+  if (isPdf) image = sharp(await renderPdfPage(file, sourcePage(asset.source), options.pdfDpi || 200))
+  else image = sharp(await sharp(file, { animated: false }).rotate().toBuffer())
   const metadata = await image.metadata()
   if (!metadata.width || !metadata.height) throw new Error('无法取得素材尺寸')
   if (asset.crop) {
@@ -27,7 +31,11 @@ async function renderAsset(asset, output, options) {
     if (right <= left || bottom <= top) throw new Error('裁切范围没有有效像素')
     image = image.extract({ left, top, width: right - left, height: bottom - top })
   }
-  if (Number.isFinite(options.maxEdge) && options.maxEdge > 0) image = image.resize({ width: options.maxEdge, height: options.maxEdge, fit: 'inside', withoutEnlargement: true })
+  if (Number.isFinite(options.maxEdge) && options.maxEdge > 0) {
+    // Sharp permits one resize per pipeline, so materialize the edge limit
+    // before composing the final canvas.
+    image = sharp(await image.resize({ width: options.maxEdge, height: options.maxEdge, fit: 'inside', withoutEnlargement: true }).toBuffer())
+  }
   const canvas = exportCanvas(options)
   image = image.resize({ width: canvas.width, height: canvas.height, fit: 'contain', background: canvas.background, withoutEnlargement: true })
   if (options.format === 'png') image = image.png()

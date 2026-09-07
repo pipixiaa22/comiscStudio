@@ -15,15 +15,14 @@ export function VoiceRecorderPanel({
     const [state, setState] = useState('idle'), [level, setLevel] = useState(0), [error, setError] = useState(''), [elapsed, setElapsed] = useState(0), [deviceId, setDeviceId] = useState('default'), [devices, setDevices] = useState([]), [recoverable, setRecoverable] = useState([])
     const session = useRef(null), stream = useRef(null), context = useRef(null), processor = useRef(null),
         gain = useRef(null), parts = useRef([]), frames = useRef(0), sequence = useRef(0),
-        queue = useRef(Promise.resolve()), started = useRef(0)
+        queue = useRef(Promise.resolve()), recordedFrames = useRef(0), playback = useRef(null)
     const listDevices = async () => setDevices((await navigator.mediaDevices.enumerateDevices()).filter(item => item.kind === 'audioinput'))
     useEffect(() => {
         void listDevices();
         void mangaDeskBridge.voice.listRecoverable(projectId).then(items => setRecoverable(items.filter(item => item.blockId === block.id))).catch(() => {
         });
         return () => {
-            stream.current?.getTracks().forEach(track => track.stop());
-            context.current?.close()
+            void finalizeOnUnmount()
         }
     }, [projectId, block.id])
     useEffect(() => {
@@ -36,8 +35,8 @@ export function VoiceRecorderPanel({
         return () => window.removeEventListener('beforeunload', warn)
     }, [state])
     useEffect(() => {
-        if (!['recording', 'paused'].includes(state)) return;
-        const timer = setInterval(() => setElapsed(Math.round((Date.now() - started.current) / 100) / 10), 100);
+        if (state !== 'recording') return;
+        const timer = setInterval(() => setElapsed(Math.round(recordedFrames.current / 4800) / 10), 100);
         return () => clearInterval(timer)
     }, [state])
     const flush = async force => {
@@ -61,6 +60,25 @@ export function VoiceRecorderPanel({
         await context.current?.close();
         processor.current = gain.current = stream.current = context.current = null
     }
+    const finalizeOnUnmount = async () => {
+        const sessionId = session.current
+        if (!sessionId) return release()
+        try {
+            // Stop callbacks before the final buffer is copied, otherwise an
+            // audio callback can append samples while IPC is in flight.
+            processor.current?.disconnect()
+            await context.current?.suspend()
+            await flush(true)
+            await queue.current
+            await release()
+            session.current = null
+            onAddTake(await mangaDeskBridge.voice.finish(sessionId))
+        } catch {
+            session.current = null
+            await mangaDeskBridge.voice.discard(sessionId).catch(() => {})
+            await release()
+        }
+    }
     const start = async () => {
         try {
             setError('');
@@ -75,6 +93,9 @@ export function VoiceRecorderPanel({
                 }, video: false
             })
             const audio = new AudioContext({sampleRate: 48000});
+            // Assign these immediately: validation/session creation may fail.
+            stream.current = media;
+            context.current = audio;
             if (audio.sampleRate !== 48000) throw new Error('当前设备无法提供 48 kHz 录音')
             const result = await mangaDeskBridge.voice.start({
                 projectId,
@@ -87,9 +108,8 @@ export function VoiceRecorderPanel({
             sequence.current = 0;
             parts.current = [];
             frames.current = 0;
+            recordedFrames.current = 0;
             queue.current = Promise.resolve();
-            stream.current = media;
-            context.current = audio
             const node = audio.createScriptProcessor(4096, 1, 1), silent = audio.createGain();
             silent.gain.value = 0
             node.onaudioprocess = event => {
@@ -104,6 +124,7 @@ export function VoiceRecorderPanel({
                 setLevel(peak);
                 parts.current.push(pcm);
                 frames.current += pcm.length;
+                recordedFrames.current += pcm.length;
                 void flush(false).catch(reason => {
                     setError(reason.message);
                     void stop()
@@ -114,12 +135,13 @@ export function VoiceRecorderPanel({
             silent.connect(audio.destination);
             processor.current = node;
             gain.current = silent;
-            started.current = Date.now();
             setElapsed(0);
             setState('recording');
             await listDevices()
         } catch (reason) {
             setError(reason.message || '无法使用麦克风');
+            if (session.current) await mangaDeskBridge.voice.discard(session.current).catch(() => {});
+            session.current = null;
             await release();
             setState('error')
         }
@@ -127,10 +149,14 @@ export function VoiceRecorderPanel({
     const stop = async () => {
         try {
             setState('finalizing');
+            const sessionId = session.current;
+            processor.current?.disconnect();
+            await context.current?.suspend();
             await flush(true);
             await queue.current;
+            setElapsed(Math.round(recordedFrames.current / 4800) / 10);
             await release();
-            const take = await mangaDeskBridge.voice.finish(session.current);
+            const take = await mangaDeskBridge.voice.finish(sessionId);
             session.current = null;
             onAddTake(take);
             setState('review')
@@ -144,8 +170,9 @@ export function VoiceRecorderPanel({
     }
     const togglePause = async () => {
         if (state === 'recording') {
-            await flush(true);
             await context.current.suspend();
+            await flush(true);
+            setElapsed(Math.round(recordedFrames.current / 4800) / 10);
             await mangaDeskBridge.voice.pause(session.current);
             setState('paused')
         } else {
@@ -155,17 +182,24 @@ export function VoiceRecorderPanel({
         }
     }
     const play = async take => {
+        playback.current?.pause()
         const bytes = await mangaDeskBridge.voice.readTake({projectId, relativePath: take.relativePath});
         const url = URL.createObjectURL(new Blob([bytes], {type: 'audio/wav'}));
         const audio = new Audio(url);
-        audio.onended = () => URL.revokeObjectURL(url);
+        const isActive = take.id === block.voice?.activeTakeId;
+        const startMs = isActive ? block.voice?.trimStartMs || 0 : 0;
+        const endMs = isActive ? block.voice?.trimEndMs ?? take.durationMs : take.durationMs;
+        audio.onloadedmetadata = () => { audio.currentTime = startMs / 1000 };
+        audio.ontimeupdate = () => { if (audio.currentTime >= endMs / 1000) audio.pause() };
+        audio.onended = audio.onpause = () => URL.revokeObjectURL(url);
+        playback.current = audio
         await audio.play()
     }
     const active = (block.voice?.takes || []).find(take => take.id === block.voice?.activeTakeId)
     const remove = async take => {
         if (!window.confirm('将此 Take 移到回收站？')) return;
-        await mangaDeskBridge.voice.trashTake({projectId, relativePath: take.relativePath});
-        onRemoveTake(take.id)
+        const trashed = await mangaDeskBridge.voice.trashTake({projectId, relativePath: take.relativePath});
+        onRemoveTake(take.id, trashed.trashId)
     }
     const recover = async item => {
         try {
