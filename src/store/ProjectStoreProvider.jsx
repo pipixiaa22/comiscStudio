@@ -51,6 +51,8 @@ export function ProjectStoreProvider({children}) {
         saveExportPreset: (name, options) => dispatch(projectActions.saveExportPreset(name, options)),
         removeExportPreset: id => dispatch(projectActions.removeExportPreset(id)),
         recordDelivery: delivery => dispatch(projectActions.recordDelivery(delivery)),
+        addVideoBasketItem: item => dispatch(projectActions.addVideoBasketItem(item)),
+        toggleVideoFavorite: favorite => dispatch(projectActions.toggleVideoFavorite(favorite)),
         addAssetToCurrentBlock: (sourceId, crop) => dispatch(projectActions.addAsset(sourceId, crop)),
         moveCurrentBlock: direction => dispatch(projectActions.move(direction)),
         duplicateCurrentBlock: () => dispatch(projectActions.duplicate()),

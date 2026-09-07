@@ -115,7 +115,7 @@ function VideoSelection({project, source, block, commands, located}) {
   const keyDown = event => {
     if (event.isComposing || event.repeat || event.ctrlKey || event.metaKey || event.altKey || event.target.closest('input, textarea, select, button, [contenteditable="true"]')) return
     const key = event.key.toLowerCase()
-    if (![' ', 'i', 'o', 'enter', 'escape', 'arrowleft', 'arrowright', 'j', 'k', 'l'].includes(key)) return
+    if (![' ', 'i', 'o', 'enter', 'escape', 'arrowleft', 'arrowright', 'j', 'k', 'l', 'b', 'q'].includes(key)) return
     event.preventDefault(); event.stopPropagation()
     if (key === 'i') mark('in')
     if (key === 'o') mark('out')
@@ -129,8 +129,21 @@ function VideoSelection({project, source, block, commands, located}) {
       else step(key === 'arrowright' ? 1 : -1)
     }
     if (key === 'j') seek(positionRef.current - 5000000)
+    if (key === 'b') favorite()
+    if (key === 'q') addToBasket()
   }
   const usage = project.blocks.flatMap(item => item.assets.filter(asset => asset.type === 'video' && asset.sourceId === source.id).map(asset => ({asset, block: item})))
+  const favorites = (project.videoFavorites || []).filter(item => item.sourceId === source.id)
+  const favorite = () => {
+    if (!ready) return
+    commands.toggleVideoFavorite(start != null && end != null ? {sourceId: source.id, timeUs: start, startUs: start, endUs: end} : {sourceId: source.id, timeUs: positionRef.current})
+    setNotice(start != null && end != null ? '已收藏当前区间' : '已收藏当前时间点')
+  }
+  const addToBasket = () => {
+    if (!valid || start == null || end == null) { setNotice('请先标记有效 I/O 区间'); return }
+    commands.addVideoBasketItem({sourceId: source.id, startUs: start, endUs: end, videoStreamIndex: source.video.streamIndex, selectionBasis: snapped.current.in && snapped.current.out ? 'frame' : 'time', audio: {mode: keepAudio ? 'keep' : 'mute', streamIndex: keepAudio ? source.audioStreams[0]?.index : null}})
+    setNotice('已加入视频素材篮')
+  }
   return <div tabIndex={0} onKeyDown={keyDown} className="rounded outline-none focus:ring-1 focus:ring-orange-400" aria-label="视频播放器，I 标记起点，O 标记终点，Enter 绑定">
     <p className="mb-2 text-xs text-orange-300">绑定目标：#{String(block.order + 1).padStart(3, '0')} · {editing ? '调整片段' : locatePreview ? '已定位，先调整' : '新增片段'}</p>
     {url && <video ref={player} src={url} preload="metadata" muted={recording || muted} className="aspect-video w-full rounded bg-black" onClick={event => event.currentTarget.parentElement.focus()}
@@ -151,6 +164,7 @@ function VideoSelection({project, source, block, commands, located}) {
     {error && <p role="alert" className="mt-2 text-xs text-red-300">{error}</p>}
     <p className="mt-2 font-mono text-xs">{formatVideoTime(position)} / {formatVideoTime(source.durationUs)} {seeking ? '定位中…' : ready ? '可直接预览' : '未就绪'}</p>
     <input aria-label="视频播放位置" type="range" min="0" max={source.durationUs} step="1000" value={position} disabled={!ready || recording} className="mt-2 w-full" onChange={event => { previewEnd.current = null; seek(Number(event.target.value)) }}/>
+    <div className="relative mt-2 h-10 overflow-hidden rounded border border-slate-700 bg-slate-950" aria-label="视频时间带总览">{usage.map(({asset}, index) => <button key={asset.id} title={`已用于 #${String(project.blocks.find(item => item.id === asset.blockId)?.order + 1 || '')}`} onClick={() => seek(asset.startUs)} className="absolute top-2 h-4 border border-orange-300 bg-orange-400/40" style={{left: `${asset.startUs / source.durationUs * 100}%`, width: `${Math.max(0.5, (asset.endUs - asset.startUs) / source.durationUs * 100)}%`}}/>)}{start != null && end != null && <div className="absolute top-1 h-6 border-2 border-emerald-300 bg-emerald-400/20" style={{left: `${start / source.durationUs * 100}%`, width: `${(end - start) / source.durationUs * 100}%`}}/>}{favorites.map(item => <button key={item.id} title="收藏：点击定位" onClick={() => seek(item.timeUs)} className="absolute bottom-0 h-2 w-1 bg-amber-300" style={{left: `${item.timeUs / source.durationUs * 100}%`}}/>)}<div className="absolute inset-y-0 w-px bg-white" style={{left: `${position / source.durationUs * 100}%`}}/></div>
     <div className="mt-2 flex flex-wrap gap-2"><Button size="sm" disabled={!ready || recording || !!error} onClick={() => player.current.paused ? play() : player.current.pause()}>播放 / 暂停</Button>
       <Button size="sm" variant="secondary" disabled={!ready || seeking || recording || !!error} onClick={() => mark('in')}>标记 I</Button><Button size="sm" variant="secondary" disabled={!ready || seeking || recording || !!error} onClick={() => mark('out')}>标记 O</Button></div>
     <div className="mt-3 space-y-1 text-xs"><p>I：{formatVideoTime(start)}</p><p>O：{formatVideoTime(end)}</p><p>{message || `时长：${((end - start) / 1000000).toFixed(3)} 秒`}</p></div>
@@ -158,7 +172,7 @@ function VideoSelection({project, source, block, commands, located}) {
       seek(start); previewEnd.current = end
       const video = player.current
       if (video.seeking) video.addEventListener('seeked', () => { if (previewEnd.current === end) void play() }, {once: true}); else void play()
-    }}>预览选区</Button><Button size="sm" disabled={!committable} onClick={commit}>{editing ? '保存范围' : '加入当前段'}</Button><Button size="sm" variant="ghost" onClick={() => { clear(); setEditing(null) }}>取消选区</Button></div>
+    }}>预览选区</Button><Button size="sm" disabled={!committable} onClick={commit}>{editing ? '保存范围' : '加入当前段'}</Button><Button size="sm" variant="secondary" onClick={favorite}>收藏</Button><Button size="sm" variant="secondary" onClick={addToBasket}>加入素材篮</Button><Button size="sm" variant="ghost" onClick={() => { clear(); setEditing(null) }}>取消选区</Button></div>
     {located?.asset.sourceId === source.id && block.assets.some(asset => asset.id === located.asset.id) && !editing && <Button size="sm" className="mt-2" variant="secondary" onClick={() => {
       const asset = block.assets.find(item => item.id === located.asset.id)
       setEditing(asset.id); setStart(asset.startUs); setEnd(asset.endUs); setLocatePreview(false); seek(asset.startUs)
@@ -170,7 +184,7 @@ function VideoSelection({project, source, block, commands, located}) {
       {recording && <p className="text-rose-300">录音中，视频预览已暂停并静音</p>}
     </div>
     {notice && <p role="status" className="mt-3 text-xs text-emerald-300">{notice}</p>}
-    <p className="mt-3 text-xs text-slate-500">播放器聚焦：Space 播放 · I/O 选段（自动吸附帧边界） · Enter 加入 · ←/→ 前一帧/后一帧 · Shift+←/→ 跳转 5 秒</p>
+    <p className="mt-3 text-xs text-slate-500">时间带：橙色为已使用区间，绿色为当前选区，黄色标记为收藏点。播放器聚焦：Space 播放 · I/O 选段 · Enter 加入 · B 收藏 · Q 加入素材篮 · ←/→ 前一帧/后一帧</p>
     {!!usage.length && <div className="mt-4 space-y-1"><h3 className="text-xs text-slate-400">本集已引用 {usage.length} 次</h3>{usage.map(({asset, block: item}) => <button key={`${item.id}:${asset.id}`} className="block text-left text-xs text-orange-300" onClick={() => { if (item.id !== block.id) commands.selectBlock(item.id); else seek(asset.startUs) }}>#{String(item.order + 1).padStart(3, '0')} · {formatVideoTime(asset.startUs)}–{formatVideoTime(asset.endUs)}</button>)}</div>}
   </div>
 }

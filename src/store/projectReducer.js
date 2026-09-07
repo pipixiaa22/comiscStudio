@@ -327,6 +327,21 @@ export function projectReducer(state, action) {
                 }), notice: '已加入素材篮'
             }
         }
+        case 'ADD_VIDEO_BASKET_ITEM': {
+            const item = action.item, source = state.project.sources.find(entry => entry.id === item?.sourceId)
+            if (!item || !source || validateVideoAsset({...item, type: 'video', selectionBasis: item.selectionBasis || 'time'}, source)) return {...state, notice: '视频候选区间无效'}
+            const duplicate = state.project.scratchBasket.some(entry => entry.type === 'video-range' && entry.sourceId === item.sourceId && entry.startUs === item.startUs && entry.endUs === item.endUs)
+            if (duplicate) return {...state, notice: '已在素材篮'}
+            return contentUpdate(state, project => { project.scratchBasket.push({...item, id: createId(), type: 'video-range', order: project.scratchBasket.length, createdAt: now()}) })
+        }
+        case 'TOGGLE_VIDEO_FAVORITE': {
+            const favorite = action.favorite, source = state.project.sources.find(entry => entry.id === favorite?.sourceId)
+            if (!favorite || !source || !Number.isSafeInteger(favorite.timeUs) || favorite.timeUs < 0 || favorite.timeUs > source.durationUs) return state
+            return contentUpdate(state, project => {
+                const index = project.videoFavorites.findIndex(item => item.sourceId === favorite.sourceId && item.timeUs === favorite.timeUs && item.startUs === favorite.startUs && item.endUs === favorite.endUs)
+                if (index >= 0) project.videoFavorites.splice(index, 1); else project.videoFavorites.push({...favorite, id: createId(), createdAt: now()})
+            })
+        }
         case 'REMOVE_BASKET_ITEM': {
             if (!state.project.scratchBasket.some(item => item.id === action.itemId)) return state
             return contentUpdate(state, project => {
@@ -353,14 +368,19 @@ export function projectReducer(state, action) {
         case 'ADD_BASKET_TO_BLOCK': {
             const item = state.project.scratchBasket.find(entry => entry.id === action.itemId)
             const block = state.project.blocks.find(entry => entry.id === action.blockId)
-            if (!item || !block || !state.project.sources.some(source => source.id === item.sourceId && source.mediaType === 'image') || item.type === 'video-point' || item.type === 'video-range' || !isValidCrop(item.crop)) return {
+            const source = state.project.sources.find(source => source.id === item?.sourceId)
+            const videoError = item?.type === 'video-range' ? validateVideoAsset({...item, type: 'video', selectionBasis: item.selectionBasis || 'time'}, source) : null
+            if (!item || !block || (item.type === 'video-range' ? videoError : (!source || source.mediaType !== 'image' || !isValidCrop(item.crop)))) return {
                 ...state,
                 notice: '候选或目标 Block 已失效'
             }
             return {
                 ...contentUpdate(state, project => {
                     const target = project.blocks.find(entry => entry.id === action.blockId);
-                    target.assets.push({
+                    target.assets.push(item.type === 'video-range' ? {
+                        id: createId(), type: 'video', sourceId: item.sourceId, startUs: item.startUs, endUs: item.endUs,
+                        videoStreamIndex: item.videoStreamIndex, selectionBasis: item.selectionBasis || 'time', audio: structuredClone(item.audio), order: target.assets.length, createdAt: now()
+                    } : {
                         id: createId(),
                         type: 'image',
                         sourceId: item.sourceId,

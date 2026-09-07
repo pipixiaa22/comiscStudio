@@ -32,6 +32,7 @@ function normalizeProjectShape(project, createBlock, timestamp) {
         })) : [],
         exportPresets: Array.isArray(project.exportPresets) ? project.exportPresets.filter(item => item?.id && item?.name && item?.options) : [],
         deliveries: Array.isArray(project.deliveries) ? project.deliveries : [],
+        videoFavorites: Array.isArray(project.videoFavorites) ? project.videoFavorites : [],
         workspace: {...(project.workspace || {}), activeMediaTab: project.workspace?.activeMediaTab || 'image', videoPositions: {...(project.workspace?.videoPositions || {})}, currentBlockId, currentSourceId: project.workspace?.currentSourceId || null},
         updatedAt: timestamp
     }
