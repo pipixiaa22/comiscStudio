@@ -12,6 +12,9 @@ import {StoryboardView} from './features/storyboard/components/StoryboardView'
 import {ExportView} from './features/export/components/ExportView'
 import {useProjectStore} from './store/ProjectStoreProvider'
 import {useShortcutScope} from './shared/hooks/useShortcutScope'
+import {mangaDeskBridge} from './shared/bridge/mangaDeskBridge'
+import {hydrateSources} from './features/project/projectSources'
+import {ProjectCenter} from './features/project/components/ProjectCenter'
 
 export default function App() {
     const {state, blocks, currentBlock, currentBlockIndex, commands} = useProjectStore()
@@ -103,6 +106,25 @@ export default function App() {
         onSelect: setSelectedSource,
         onError: setError
     })
+    const appendSource = useCallback(async kind => {
+        if (!project) return
+        try {
+            const source = await (kind === 'pdf' ? mangaDeskBridge.choosePdf() : mangaDeskBridge.chooseDirectory())
+            if (!source?.images?.length) return
+            const output = await mangaDeskBridge.appendSources(project.id, source.images, source.sourcePath || source.directory)
+            const additions = hydrateSources(source.images, output.project).filter(source => source.sourceId)
+            commands.load(output.project)
+            setSources(current => [...current, ...additions.filter(item => !current.some(existing => existing.sourceId === item.sourceId))])
+            setSelectedSource(additions[0] || null)
+            if (!output.added) setError('所选来源已在当前项目中')
+        } catch (error) { setError(error instanceof Error ? error.message : '追加来源失败') }
+    }, [commands, project])
+    const openProject = useCallback(async id => {
+        try {
+            const data = await mangaDeskBridge.openProject(id), nextSources = hydrateSources(data.images, data.project)
+            commands.load(data.project); setSources(nextSources); setSelectedSource(nextSources.find(source => source.sourceId === data.project.workspace.currentSourceId) || nextSources[0] || null); setView('workspace')
+        } catch (error) { setError(error instanceof Error ? error.message : '打开项目失败') }
+    }, [commands])
     useEffect(() => () => releaseAllPdfDocuments(), [sources])
     useEffect(() => {
         if (!state.notice) return
@@ -116,6 +138,37 @@ export default function App() {
         }
         if (!selectedAssetId || !currentBlock.assets.some(asset => asset.id === selectedAssetId)) setSelectedAssetId(currentBlock.assets.at(-1).id)
     }, [currentBlock?.assets, selectedAssetId])
+    useEffect(() => {
+        if (!project || !window.mangaDesk?.assistant) return
+        const sources = new Map((project.sources || []).map(source => [source.id, source]))
+        const snapshot = {
+            projectId: project.id,
+            revision: state.revision,
+            projectName: project.name,
+            narrationMode: project.narration?.mode || 'text',
+            saveStatus: state.saveStatus,
+            blocks: blocks.map((block, index) => ({
+                id: block.id,
+                position: index + 1,
+                text: block.text,
+                status: block.status,
+                assets: (block.assets || []).map((asset, assetIndex) => ({
+                    ...asset,
+                    position: assetIndex + 1,
+                    source: sources.get(asset.sourceId)
+                }))
+            }))
+        }
+        void mangaDeskBridge.assistant.publish(snapshot).catch(() => {
+        })
+    }, [project, blocks, state.revision, state.saveStatus])
+    useEffect(() => {
+        if (!window.mangaDesk?.assistant) return
+        return mangaDeskBridge.assistant.onCommand(command => {
+            if (command?.type === 'setStatus') commands.setBlockStatus(command.blockId, command.payload?.key, command.payload?.value)
+            if (command?.type === 'locateBlock') commands.selectBlock(command.blockId)
+        })
+    }, [commands])
     const bindings = useMemo(() => ({
         'Ctrl+s': save,
         'Ctrl+Enter': commands.completeCurrentBlock,
@@ -132,10 +185,13 @@ export default function App() {
     return <div className="flex h-full min-h-0 flex-col bg-[#0f1219]">
         <AppHeader project={project} saveStatus={{status: state.saveStatus, error: state.saveError}} view={view}
                    onViewChange={setView} onSave={save} onImport={importSource} onExport={() => setView('export')}
+                   onAppendSource={appendSource}
+                   onProjectCenter={() => setView('projects')}
+                   onAssistant={() => window.mangaDesk?.assistant && mangaDeskBridge.assistant.open()}
                    narrationMode={project?.narration?.mode || 'text'} onNarrationMode={commands.setNarrationMode}/>
         {(error || state.notice) && <div role="status"
                                          className="bg-slate-800 px-4 py-2 text-center text-sm text-slate-200">{error || state.notice}</div>}
-        {!project ? <Welcome onImport={importSource}/> : view === 'export' ?
+        {view === 'projects' ? <ProjectCenter onOpen={openProject} onClose={() => setView('workspace')}/> : !project ? <Welcome onImport={importSource}/> : view === 'export' ?
             <ExportView project={project} revision={state.revision}
                         onClose={() => setView('workspace')}/> : view === 'storyboard' ?
                 <StoryboardView project={project} revision={state.revision} sourcesById={sourcesById}

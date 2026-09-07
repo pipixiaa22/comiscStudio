@@ -17,6 +17,12 @@ function unwrap(result) {
 
 export const mangaDeskBridge = {
     loadRecentProject: async () => unwrap(await bridge().loadRecentProject()),
+    listProjects: async options => unwrap(await bridge().listProjects(options)),
+    openProject: async id => unwrap(await bridge().openProject(id)),
+    renameProject: async (id, name) => unwrap(await bridge().renameProject(id, name)),
+    archiveProject: async (id, archived) => unwrap(await bridge().archiveProject(id, archived)),
+    appendSources: async (id, sources, directory) => unwrap(await bridge().appendSources(id, sources, directory)),
+    relocateSources: async (id, replacements) => unwrap(await bridge().relocateSources(id, replacements)),
     saveProject: async project => unwrap(await bridge().saveProject(project)),
     createProject: async input => unwrap(await bridge().createProject(input)),
     chooseDirectory: () => bridge().chooseDirectory(),
@@ -44,5 +50,20 @@ export const mangaDeskBridge = {
         restoreTake: async input => unwrap(await bridge().voice.restoreTake(input))
     },
     copyText: text => bridge().copyText(text)
+    ,
+    assistant: {
+        open: async () => unwrap(await bridge().assistant.open()),
+        publish: async snapshot => unwrap(await bridge().assistant.publish(snapshot)),
+        snapshot: async () => unwrap(await bridge().assistant.snapshot()),
+        topmost: async value => unwrap(await bridge().assistant.topmost(value)),
+        copy: async input => unwrap(await bridge().assistant.copy(input)),
+        command: async input => unwrap(await bridge().assistant.command(input)),
+        prepare: async input => unwrap(await bridge().assistant.prepare(input)),
+        startDrag: token => bridge().assistant.startDrag(token),
+        openAssetDirectory: async token => unwrap(await bridge().assistant.openAssetDirectory(token)),
+        onSnapshot: callback => bridge().assistant.onSnapshot(callback),
+        onCommand: callback => bridge().assistant.onCommand(callback),
+        onAssetState: callback => bridge().assistant.onAssetState(callback)
+    }
 }
 export {BridgeError}

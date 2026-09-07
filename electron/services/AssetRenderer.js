@@ -36,6 +36,14 @@ async function renderAsset(asset, output, options) {
     // before composing the final canvas.
     image = sharp(await image.resize({ width: options.maxEdge, height: options.maxEdge, fit: 'inside', withoutEnlargement: true }).toBuffer())
   }
+  if (options.layout === 'source') {
+    if (options.format === 'jpeg') image = image.flatten({ background: '#ffffff' }).jpeg({ quality: Math.max(1, Math.min(100, options.jpegQuality || 92)) })
+    else image = image.png()
+    const result = await image.toFile(output)
+    const after = await fingerprint(file)
+    if (!sameFingerprint(before, after)) throw new Error('导出期间来源文件发生变化')
+    return { width: result.width, height: result.height, canvas: null }
+  }
   const canvas = exportCanvas(options)
   image = image.resize({ width: canvas.width, height: canvas.height, fit: 'contain', background: canvas.background, withoutEnlargement: true })
   if (options.format === 'png') image = image.png()

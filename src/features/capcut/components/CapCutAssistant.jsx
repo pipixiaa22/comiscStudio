@@ -1,0 +1,126 @@
+import {useEffect, useMemo, useState} from 'react'
+import {ChevronLeft, ChevronRight, Copy, ExternalLink, Pin, PinOff, Play} from 'lucide-react'
+import {Button} from '../../../components/ui/button'
+import {mangaDeskBridge} from '../../../shared/bridge/mangaDeskBridge'
+
+export function CapCutAssistant() {
+    const [snapshot, setSnapshot] = useState(null), [blockId, setBlockId] = useState(null), [topmost, setTopmost] = useState(true), [notice, setNotice] = useState('')
+    useEffect(() => {
+        const off = mangaDeskBridge.assistant.onSnapshot(next => {
+            setSnapshot(next);
+            setBlockId(current => next.blocks.some(block => block.id === current) ? current : next.blocks[0]?.id || null)
+        });
+        void mangaDeskBridge.assistant.snapshot().then(next => {
+            if (next) {
+                setSnapshot(next);
+                setBlockId(next.blocks[0]?.id || null)
+            }
+        }).catch(() => {
+        });
+        return off
+    }, [])
+    const index = useMemo(() => snapshot?.blocks.findIndex(block => block.id === blockId) ?? -1, [snapshot, blockId]),
+        block = snapshot?.blocks[index]
+    const copy = async () => {
+        try {
+            await mangaDeskBridge.assistant.copy({sessionId: snapshot.sessionId, revision: snapshot.revision, blockId});
+            setNotice(`已复制 #${String(index + 1).padStart(3, '0')}`)
+        } catch (error) {
+            setNotice(error.message)
+        }
+    }
+    const command = async (key, value) => {
+        try {
+            await mangaDeskBridge.assistant.command({
+                sessionId: snapshot.sessionId,
+                projectId: snapshot.projectId,
+                baseRevision: snapshot.revision,
+                requestId: globalThis.crypto.randomUUID(),
+                blockId,
+                type: 'setStatus',
+                payload: {key, value}
+            })
+        } catch (error) {
+            setNotice(error.message)
+        }
+    }
+    const prepare = async asset => {
+        try {
+            const item = await mangaDeskBridge.assistant.prepare({
+                sessionId: snapshot.sessionId,
+                revision: snapshot.revision,
+                blockId,
+                assetId: asset.id
+            });
+            setSnapshot(current => ({
+                ...current,
+                blocks: current.blocks.map(entry => entry.id === blockId ? {
+                    ...entry,
+                    assets: entry.assets.map(candidate => candidate.id === asset.id ? {
+                        ...candidate,
+                        delivery: item
+                    } : candidate)
+                } : entry)
+            }))
+        } catch (error) {
+            setNotice(error.message)
+        }
+    }
+    useEffect(() => {
+        const keydown = event => {
+            if (event.isComposing || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName)) return
+            if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'c') { event.preventDefault(); void copy() }
+            if (event.key === 'ArrowLeft' && index > 0) { event.preventDefault(); setBlockId(snapshot.blocks[index - 1].id) }
+            if (event.key === 'ArrowRight' && index >= 0 && index < snapshot.blocks.length - 1) { event.preventDefault(); setBlockId(snapshot.blocks[index + 1].id) }
+        }
+        window.addEventListener('keydown', keydown)
+        return () => window.removeEventListener('keydown', keydown)
+    }, [snapshot, index, blockId])
+    if (!snapshot) return <main
+        className="grid min-h-screen place-items-center bg-[#11141c] text-sm text-slate-400">正在连接主工作区…</main>
+    if (!block) return <main className="grid min-h-screen place-items-center bg-[#11141c] text-sm text-slate-400">暂无
+        Block</main>
+    return <main className="flex h-screen flex-col bg-[#11141c] p-4 text-slate-100">
+        <header className="flex items-center gap-2">
+            <div className="min-w-0"><b className="block truncate">{snapshot.projectName}</b><span
+                className="text-xs text-slate-400">#{String(index + 1).padStart(3, '0')} / {snapshot.blocks.length}</span>
+            </div>
+            <Button className="ml-auto" size="sm" variant="ghost" onClick={async () => {
+                const next = await mangaDeskBridge.assistant.topmost(!topmost);
+                setTopmost(next)
+            }}>{topmost ? <Pin className="h-4 w-4"/> : <PinOff className="h-4 w-4"/>}</Button></header>
+        <section className="mt-4 min-h-0 flex-1 overflow-auto rounded border border-slate-700 bg-slate-900/40 p-3">
+            <div className="flex items-center"><b>文案</b><Button className="ml-auto" size="sm"
+                                                                  disabled={!String(block.text || '').trim()}
+                                                                  onClick={copy}><Copy
+                className="h-4 w-4"/>复制文案</Button></div>
+            <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-200">{block.text || '此段没有文案'}</p>
+            <div className="mt-5"><b className="text-sm">素材</b>{!block.assets.length &&
+                <p className="mt-2 text-xs text-slate-400">此段尚未配图</p>}{block.assets.map(asset => <div
+                key={asset.id} className="mt-2 rounded border border-slate-700 p-2">
+                <div className="flex items-center gap-2 text-xs">
+                    <span>#{String(asset.position).padStart(2, '0')} {asset.source?.fileName || '素材'}</span>{asset.delivery ? <>
+                    <Button className="ml-auto" size="sm" draggable onDragStart={event => {
+                        event.preventDefault();
+                        mangaDeskBridge.assistant.startDrag(asset.delivery.token)
+                    }}><Play className="h-3 w-3"/>拖入剪映</Button><Button size="sm" variant="ghost"
+                                                                           onClick={() => mangaDeskBridge.assistant.openAssetDirectory(asset.delivery.token)}><ExternalLink
+                    className="h-3 w-3"/></Button></> : <Button className="ml-auto" size="sm" variant="secondary"
+                                                                onClick={() => prepare(asset)}>准备素材</Button>}</div>
+            </div>)}</div>
+        </section>
+        <section
+            className="mt-3 grid grid-cols-3 gap-2 text-xs">{[['voiced', '配音'], ['edited', '放图'], ['effectDone', '动效']].map(([key, label]) =>
+            <label key={key} className="flex items-center gap-1"><input type="checkbox"
+                                                                        disabled={snapshot.narrationMode === 'voice' && key === 'voiced'}
+                                                                        checked={Boolean(block.status?.[key])}
+                                                                        onChange={event => command(key, event.target.checked)}/>{label}
+            </label>)}</section>
+        <footer className="mt-3 flex gap-2"><Button variant="secondary" disabled={index <= 0}
+                                                    onClick={() => setBlockId(snapshot.blocks[index - 1].id)}><ChevronLeft
+            className="h-4 w-4"/>上一段</Button><Button className="ml-auto"
+                                                        disabled={index >= snapshot.blocks.length - 1}
+                                                        onClick={() => setBlockId(snapshot.blocks[index + 1].id)}>下一段<ChevronRight
+            className="h-4 w-4"/></Button></footer>
+        {notice && <p className="mt-2 text-xs text-amber-300">{notice}</p>}</main>
+}

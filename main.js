@@ -9,26 +9,35 @@ const { ExportService } = require('./electron/services/ExportService')
 const { registerExportIpc } = require('./electron/ipc/registerExportIpc')
 const { VoiceRecordingService } = require('./electron/services/VoiceRecordingService')
 const { registerVoiceIpc } = require('./electron/ipc/registerVoiceIpc')
+const { AssistantWindowService } = require('./electron/services/AssistantWindowService')
+const { registerAssistantIpc } = require('./electron/ipc/registerAssistantIpc')
+
+let mainWindow
 
 function createMainWindow() {
-  const window = new BrowserWindow({
+  const window = mainWindow = new BrowserWindow({
     width: 1500, height: 940, minWidth: 1040, minHeight: 680,
     backgroundColor: '#11141c', autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false }
   })
   window.loadFile(path.join(__dirname, 'dist', 'index.html'))
+  window.on('closed', () => { mainWindow = null; assistantWindowService?.close() })
+  return window
 }
+let assistantWindowService
 
 app.whenReady().then(() => {
   const projectService = new ProjectService(app.getPath('userData'))
   const sourceScanService = new SourceScanService()
   const exportService = new ExportService(projectService)
   const voiceRecordingService = new VoiceRecordingService(projectService)
+  assistantWindowService = new AssistantWindowService({ app, preload: path.join(__dirname, 'preload.js'), indexFile: path.join(__dirname, 'dist', 'index.html') })
   registerProjectIpc({ ipcMain, projectService, sourceScanService, exportService })
   registerSourceIpc({ ipcMain, dialog, sourceScanService })
   registerSystemIpc({ ipcMain, clipboard })
   registerExportIpc({ ipcMain, dialog, shell, exportService })
   registerVoiceIpc({ ipcMain, voiceRecordingService })
+  registerAssistantIpc({ ipcMain, shell, clipboard, assistantWindowService, projectService, mainWindow: () => mainWindow })
   createMainWindow()
 })
 
