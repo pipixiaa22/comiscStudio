@@ -42,6 +42,7 @@ export function ProjectStoreProvider({children}) {
         updateBlockText: (blockId, text) => dispatch(projectActions.updateText(blockId, text, Date.now())),
         completeCurrentBlock: () => dispatch(projectActions.complete()),
         completeAndAddBlock: () => dispatch(projectActions.completeAndAdd()),
+        completeAndNextBlock: () => dispatch(projectActions.completeAndNext()),
         addBlock: () => dispatch(projectActions.addBlock()),
         insertTextBlocks: (texts, insertAfterId) => dispatch(projectActions.insertTextBlocks(texts, insertAfterId)),
         splitBlock: (blockId, offset) => dispatch(projectActions.splitBlock(blockId, offset)),

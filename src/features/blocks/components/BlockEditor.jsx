@@ -1,4 +1,4 @@
-import {Check, ChevronDown, ChevronRight, Image as ImageIcon, Merge, MoveDown, MoveUp, Plus, Search, Scissors, Trash2, Upload} from 'lucide-react'
+import {Check, ChevronDown, ChevronRight, Ellipsis, Image as ImageIcon, Merge, MoveDown, MoveUp, Plus, Search, Scissors, Trash2, Upload} from 'lucide-react'
 import {useEffect, useMemo, useRef, useState} from 'react'
 import {Button} from '../../../components/ui/button'
 import {Card, CardContent} from '../../../components/ui/card'
@@ -16,11 +16,15 @@ export function BlockEditor({
                                 onBlurText,
                                 onComplete,
                                 onCompleteAndAdd,
+                                onCompleteAndNext,
                                 onAddBlock,
                                 onInsertTextBlocks,
                                 onSplitBlock,
                                 onMergeWithNext,
                                 onBulkBlocks,
+                                onMoveCurrent,
+                                onDuplicateCurrent,
+                                onDeleteCurrent,
                                 onAddVoiceTake,
                                 onSetActiveVoiceTake,
                                 onSetNarrationRequired,
@@ -33,6 +37,7 @@ export function BlockEditor({
     const [importOpen, setImportOpen] = useState(false)
     const [importText, setImportText] = useState('')
     const [separator, setSeparator] = useState('blank')
+    const [blockMenuOpen, setBlockMenuOpen] = useState(false)
     const fileRef = useRef(null)
     useEffect(() => {
         if (block?.id) setOpen(value => new Set([...value, block.id]))
@@ -90,24 +95,21 @@ export function BlockEditor({
                     }} onClick={() => onSelectBlock(entry.id)}>{expanded ? <ChevronDown className="h-4 w-4"/> :
                         <ChevronRight className="h-4 w-4"/>}<b className="text-sm">#{pageNumber(index)}</b><span
                         className="min-w-0 flex-1 truncate text-xs text-slate-400">{textSummary(entry.text) || '空白文案段落'}</span>{entry.status.scriptDone &&
-                        <Check className="h-4 w-4 text-emerald-400"/>}</button></div>
+                        <Check className="h-4 w-4 text-emerald-400"/>}</button>{entry.id === block?.id && <div className="relative mr-2"><Button size="icon" variant="ghost" aria-label="当前段更多操作" title="当前段更多操作" onClick={() => setBlockMenuOpen(value => !value)}><Ellipsis className="h-4 w-4"/></Button>{blockMenuOpen && <div className="absolute right-0 top-full z-20 w-40 rounded border border-slate-700 bg-slate-900 p-1 shadow-xl"><button className="w-full rounded px-3 py-2 text-left text-xs hover:bg-slate-800 disabled:text-slate-600" disabled={!index} onClick={() => { onMoveCurrent(-1); setBlockMenuOpen(false) }}>上移当前段</button><button className="w-full rounded px-3 py-2 text-left text-xs hover:bg-slate-800 disabled:text-slate-600" disabled={index === blocks.length - 1} onClick={() => { onMoveCurrent(1); setBlockMenuOpen(false) }}>下移当前段</button><button className="w-full rounded px-3 py-2 text-left text-xs hover:bg-slate-800" onClick={() => { onDuplicateCurrent(); setBlockMenuOpen(false) }}>复制当前段</button><button className="w-full rounded px-3 py-2 text-left text-xs hover:bg-slate-800" onClick={() => { onCompleteAndAdd(); setBlockMenuOpen(false) }}>完成并新建</button><button className="w-full rounded px-3 py-2 text-left text-xs hover:bg-slate-800" onClick={() => { onCompleteAndNext(); setBlockMenuOpen(false) }}>完成并前往待办</button><button className="w-full rounded px-3 py-2 text-left text-xs text-red-300 hover:bg-slate-800" onClick={() => { onDeleteCurrent(); setBlockMenuOpen(false) }}>删除当前段</button></div>}</div>}</div>
                     {expanded && <CardContent><textarea value={entry.text}
                                                         onChange={event => onChangeText(entry.id, event.target.value)}
                                                         onKeyDown={event => { if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key === 'Enter') { event.preventDefault(); onSplitBlock(entry.id, event.currentTarget.selectionStart) } }}
                                                         onBlur={onBlurText} placeholder="在这里写这一段解说…"
                                                         className="min-h-40 w-full resize-y rounded-lg border border-slate-700 bg-slate-950 p-4 text-[15px] leading-7 outline-none focus:border-orange-400"/>
-                        <div className="mt-3 flex items-center text-xs text-slate-500">
+                        <div className={`mt-4 flex items-center text-xs text-slate-500 ${entry.id === block?.id ? 'sticky bottom-0 -mx-4 border-t border-slate-700 bg-slate-800/95 px-4 py-3 backdrop-blur' : ''}`}>
                             <span>{entry.text.length} 字 · Ctrl/Cmd+Shift+Enter 拆分</span>
                             <Button size="sm" variant="ghost" className="ml-2" disabled={!entry.text || Boolean(entry.voice?.takes?.length)} onClick={() => {
                                 const textarea = document.activeElement?.tagName === 'TEXTAREA' ? document.activeElement : null
                                 onSplitBlock(entry.id, textarea?.selectionStart ?? Math.floor(entry.text.length / 2))
                             }}><Scissors className="h-3.5 w-3.5"/>拆分</Button><Button size="sm" variant="ghost" disabled={index === blocks.length - 1 || Boolean(entry.voice?.takes?.length) || Boolean(blocks[index + 1]?.voice?.takes?.length)} onClick={() => onMergeWithNext(entry.id)}><Merge className="h-3.5 w-3.5"/>合并下一段</Button>
-                            <div className="ml-auto flex gap-2"><Button size="sm" variant="secondary"
+                            <div className="ml-auto flex gap-2">{entry.id !== block?.id && <Button size="sm" variant="secondary"
                                                                         onClick={() => complete(entry.id)}><Check
-                                className="h-4 w-4"/>完成</Button><Button size="sm" onClick={() => {
-                                onSelectBlock(entry.id);
-                                onCompleteAndAdd()
-                            }}><Plus className="h-4 w-4"/>完成并新建</Button></div>
+                                className="h-4 w-4"/>完成</Button>}{entry.id === block?.id && <Button size="sm" onClick={() => complete(entry.id)}><Check className="h-4 w-4"/>完成当前段</Button>}</div>
                         </div>
                         {narrationMode === 'voice' && entry.id === block?.id &&
                             <VoiceRecorderPanel projectId={projectId} block={entry}

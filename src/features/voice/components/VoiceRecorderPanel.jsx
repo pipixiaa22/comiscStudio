@@ -1,5 +1,5 @@
 import {useEffect, useRef, useState} from 'react'
-import {Mic, Pause, Play, Square} from 'lucide-react'
+import {ChevronDown, ChevronRight, Mic, Pause, Play, Square} from 'lucide-react'
 import {Button} from '../../../components/ui/button'
 import {mangaDeskBridge} from '../../../shared/bridge/mangaDeskBridge'
 
@@ -12,7 +12,7 @@ export function VoiceRecorderPanel({
                                        onSetTrim,
                                        onRemoveTake
                                    }) {
-    const [state, setState] = useState('idle'), [level, setLevel] = useState(0), [error, setError] = useState(''), [elapsed, setElapsed] = useState(0), [deviceId, setDeviceId] = useState('default'), [devices, setDevices] = useState([]), [recoverable, setRecoverable] = useState([])
+    const [state, setState] = useState('idle'), [level, setLevel] = useState(0), [error, setError] = useState(''), [elapsed, setElapsed] = useState(0), [deviceId, setDeviceId] = useState('default'), [devices, setDevices] = useState([]), [recoverable, setRecoverable] = useState([]), [expanded, setExpanded] = useState(false)
     const session = useRef(null), stream = useRef(null), context = useRef(null), processor = useRef(null),
         gain = useRef(null), parts = useRef([]), frames = useRef(0), sequence = useRef(0),
         queue = useRef(Promise.resolve()), recordedFrames = useRef(0), playback = useRef(null)
@@ -33,6 +33,9 @@ export function VoiceRecorderPanel({
         };
         window.addEventListener('beforeunload', warn);
         return () => window.removeEventListener('beforeunload', warn)
+    }, [state])
+    useEffect(() => {
+        if (['requestingPermission', 'recording', 'paused', 'finalizing', 'error'].includes(state)) setExpanded(true)
     }, [state])
     useEffect(() => {
         if (state !== 'recording') return;
@@ -220,16 +223,18 @@ export function VoiceRecorderPanel({
         await mangaDeskBridge.voice.discard(item.id);
         setRecoverable(items => items.filter(entry => entry.id !== item.id))
     }
-    return <div className="mt-4 rounded-lg border border-rose-400/30 bg-rose-950/10 p-4">{recoverable.map(item => <div
+    const takeCount = block.voice?.takes?.length || 0
+    const recording = ['requestingPermission', 'recording', 'paused', 'finalizing'].includes(state)
+    return <div className="mt-5 rounded-lg border border-rose-400/30 bg-rose-950/10 p-4">
+        <div className="flex items-center gap-2"><Mic className="h-4 w-4 text-rose-300"/><b className="text-sm">真人录音</b>{!expanded && <span className="min-w-0 flex-1 truncate text-xs text-slate-400">{takeCount ? `已录 ${takeCount} 条${active ? ' · 已选用' : ''}` : '尚未录音'}</span>}<span className="ml-auto font-mono text-sm">{elapsed.toFixed(1)}s</span>{!expanded && !recording && <Button size="sm" onClick={() => { setExpanded(true); void start() }}><Mic className="h-4 w-4"/>开始录音</Button>}<Button size="icon" variant="ghost" aria-label={expanded ? '收起录音详情' : '展开录音详情'} title={expanded ? '收起录音详情' : '展开录音详情'} onClick={() => setExpanded(value => !value)}>{expanded ? <ChevronDown className="h-4 w-4"/> : <ChevronRight className="h-4 w-4"/>}</Button></div>
+        {!expanded && <p className="mt-2 text-xs text-slate-400">文案可作为提词参考；需要时展开查看设备、录音和 Take 管理。</p>}
+        {expanded && <>{recoverable.map(item => <div
         key={item.id} className="mb-3 rounded border border-amber-400/40 bg-amber-950/20 p-2 text-xs">
         <b>发现未完成录音</b><span className="ml-2 text-slate-400">{Math.round(item.bytes / 96)}ms</span><Button
         size="sm" className="ml-2" onClick={() => recover(item)}>恢复为 Take</Button><Button size="sm" variant="ghost"
                                                                                              className="text-red-300"
                                                                                              onClick={() => discardRecovery(item)}>丢弃</Button>
     </div>)}
-        <div className="flex items-center gap-2"><Mic className="h-4 w-4 text-rose-300"/><b
-            className="text-sm">真人录音</b><span className="ml-auto font-mono text-sm">{elapsed.toFixed(1)}s</span>
-        </div>
         <p className="mt-1 text-xs text-slate-400">文案保留为提词参考；语音导出后请在剪映中识别字幕。</p>
         <div className="mt-3 flex items-center gap-2"><select value={deviceId}
                                                               disabled={['recording', 'paused', 'finalizing'].includes(state)}
@@ -272,6 +277,6 @@ export function VoiceRecorderPanel({
             <Button size="sm" variant="ghost" onClick={() => onSetActiveTake(take.id)}>设为当前</Button>}<Button
             size="sm" variant="ghost" className="ml-auto" onClick={() => play(take)}><Play
             className="h-3 w-3"/>试听</Button><Button size="sm" variant="ghost" className="text-red-300"
-                                                      onClick={() => remove(take)}>删除</Button></div>)}</div>
+                                                      onClick={() => remove(take)}>删除</Button></div>)}</div></>}
     </div>
 }

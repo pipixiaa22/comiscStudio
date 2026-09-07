@@ -4,7 +4,7 @@ import {SourcePreview} from './SourcePreview'
 import {formatVideoTime} from '../../video/model/videoRange'
 
 export function ScratchBasket({projectId, items, sourcesById, currentBlockId, onAdd, onRemove, onMove, onClear}) {
-    return <details open className="mt-4 rounded border border-slate-700 bg-slate-900/40">
+    return <details className="mt-5 rounded border border-slate-700 bg-slate-900/40">
         <summary className="cursor-pointer px-3 py-2 text-sm font-bold">素材篮 <span
             className="text-slate-400">({items.length})</span></summary>
         <div className="space-y-2 border-t border-slate-700 p-2">{!items.length &&

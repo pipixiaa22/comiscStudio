@@ -1,4 +1,4 @@
-import {ChevronDown, ChevronUp, Copy, ImageOff, MicOff, Redo2, TextCursorInput, Trash2, Undo2} from 'lucide-react'
+import {CircleCheck, ImageOff, MicOff, TextCursorInput} from 'lucide-react'
 import {Button} from '../../../components/ui/button'
 import {Card, CardContent} from '../../../components/ui/card'
 import {pageNumber} from '../../../shared/lib/pageNumber'
@@ -16,8 +16,6 @@ export function BlockStatusPanel({
                                      sourcesById,
                                      basket,
                                      commands,
-                                     undoCount,
-                                     redoCount,
                                      onLocateAsset,
                                      selectedAssetId,
                                      onSelectAsset
@@ -30,32 +28,25 @@ export function BlockStatusPanel({
         } catch {
         }
     }
-    return <aside className="min-h-0 overflow-auto bg-[#181c25] p-4" onDragOver={event => event.preventDefault()}
+    const requiredStatuses = statuses.filter(([key]) => narrationMode === 'voice' || key !== 'voiced')
+    const missing = requiredStatuses.filter(([key]) => !(narrationMode === 'voice' && key === 'voiced' ? (block.voice?.narrationRequired === false || Boolean(block.voice?.activeTakeId)) : block.status[key]))
+    const nextTodo = missing.find(([key]) => key === 'scriptDone') ? 'text' : missing.find(([key]) => key === 'assetDone') ? 'assets' : 'voice'
+    const todoLabel = {text: '文案', assets: '配图', voice: '录音'}[nextTodo]
+    return <aside className="min-h-0 overflow-auto bg-[#181c25] p-5" onDragOver={event => event.preventDefault()}
                   onDrop={dropBasket}>
-        <h2 className="text-sm font-bold">当前 Block</h2>
-        <Card className="mt-3"><CardContent className="space-y-3">
-            <div><span className="text-xs text-slate-500">BLOCK</span>
-                <div className="text-xl font-bold">#{pageNumber(index)} <span
-                    className="text-xs font-normal text-slate-500">/ {total}</span></div>
+        <div className="flex items-center justify-between"><h2 className="text-base font-semibold">当前段检查器</h2><span className="text-xs text-slate-500">#{pageNumber(index)} / {total}</span></div>
+        <Card className="mt-4 border-slate-700 bg-[#1c2230]"><CardContent className="space-y-4">
+            <div><span className="text-xs font-medium text-slate-400">当前段完成度</span>
+                <div className="mt-1 flex items-end gap-2"><div className="text-2xl font-bold">{requiredStatuses.length - missing.length}/{requiredStatuses.length}</div><span className="mb-1 text-xs text-slate-400">{missing.length ? `还缺 ${missing.map(([, label]) => label).join('、')}` : '已满足当前要求'}</span></div>
             </div>
-            <div className="grid grid-cols-2 gap-2 text-xs">{statuses.map(([key, label]) => <label key={key}
-                                                                                                   className="flex items-center gap-2"><input
+            <div className="flex flex-wrap gap-2 text-xs">{requiredStatuses.map(([key, label]) => <label key={key}
+                                                                                                   className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 ${!missing.some(([missingKey]) => missingKey === key) ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200' : 'border-slate-700 bg-slate-900 text-slate-300'}`}><input
                 type="checkbox"
                 checked={narrationMode === 'voice' && key === 'voiced' ? (block.voice?.narrationRequired === false || Boolean(block.voice?.activeTakeId)) : Boolean(block.status[key])}
                 disabled={narrationMode === 'voice' && key === 'voiced'}
                 onChange={event => commands.setBlockStatus(block.id, key, event.target.checked)}/>{narrationMode === 'voice' && key === 'voiced' ? '录音' : label}
             </label>)}</div>
-            <div className="grid grid-cols-2 gap-2"><Button variant="secondary" size="sm" disabled={!index}
-                                                            onClick={() => commands.moveCurrentBlock(-1)}><ChevronUp
-                className="h-4 w-4"/>上移</Button><Button variant="secondary" size="sm" disabled={index === total - 1}
-                                                          onClick={() => commands.moveCurrentBlock(1)}><ChevronDown
-                className="h-4 w-4"/>下移</Button><Button variant="secondary" size="sm"
-                                                          onClick={commands.duplicateCurrentBlock}><Copy
-                className="h-4 w-4"/>复制</Button><Button variant="ghost" size="sm" className="text-red-300"
-                                                          onClick={commands.deleteCurrentBlock}><Trash2
-                className="h-4 w-4"/>删除</Button></div>
         </CardContent></Card>
-        <Card className="mt-3"><CardContent className="space-y-2 py-3"><h3 className="text-xs font-semibold text-slate-300">下一待办</h3><p className="text-xs text-slate-500">跳过已完成项，不会自动完成当前段。</p><div className="grid grid-cols-3 gap-1"><Button size="sm" variant="secondary" onClick={() => commands.selectNextTodo('text')} title="下一未写文案"><TextCursorInput className="h-3.5 w-3.5"/>文案</Button><Button size="sm" variant="secondary" onClick={() => commands.selectNextTodo('assets')} title="下一未配图"><ImageOff className="h-3.5 w-3.5"/>配图</Button>{narrationMode === 'voice' && <Button size="sm" variant="secondary" onClick={() => commands.selectNextTodo('voice')} title="下一待录音"><MicOff className="h-3.5 w-3.5"/>录音</Button>}</div></CardContent></Card>
         <BlockAssetList assets={block.assets} sourcesById={sourcesById} selectedAssetId={selectedAssetId}
                         onSelect={onSelectAsset} onLocate={onLocateAsset}
                         onRemove={assetId => commands.removeAsset(block.id, assetId)}
@@ -63,10 +54,6 @@ export function BlockStatusPanel({
         <ScratchBasket projectId={projectId} items={basket} sourcesById={sourcesById} currentBlockId={block.id}
                        onAdd={commands.addBasketItemToBlock} onRemove={commands.removeBasketItem}
                        onMove={commands.reorderBasket} onClear={commands.clearBasket}/>
-        <div className="mt-4 flex gap-2"><Button variant="secondary" size="sm" disabled={!undoCount}
-                                                 onClick={commands.undo}><Undo2
-            className="h-4 w-4"/>撤销</Button><Button variant="secondary" size="sm" disabled={!redoCount}
-                                                      onClick={commands.redo}><Redo2 className="h-4 w-4"/>重做</Button>
-        </div>
+        <Card className="mt-6 border-slate-700 bg-slate-900/40"><CardContent className="space-y-3 py-4"><div><h3 className="text-sm font-semibold">下一待办</h3><p className="mt-1 text-xs text-slate-400">{missing.length ? `前往下一处待处理的${todoLabel}` : '当前段已完成，可继续检查后续段落。'}</p></div><Button className="w-full" onClick={() => commands.selectNextTodo(nextTodo)}><CircleCheck className="h-4 w-4"/>{missing.length ? `前往下一待办：${todoLabel}` : '查看下一段'}</Button><div className="flex gap-1"><Button size="sm" variant="ghost" className="flex-1" onClick={() => commands.selectNextTodo('text')} title="下一未写文案"><TextCursorInput className="h-3.5 w-3.5"/>文案</Button><Button size="sm" variant="ghost" className="flex-1" onClick={() => commands.selectNextTodo('assets')} title="下一未配图"><ImageOff className="h-3.5 w-3.5"/>配图</Button>{narrationMode === 'voice' && <Button size="sm" variant="ghost" className="flex-1" onClick={() => commands.selectNextTodo('voice')} title="下一待录音"><MicOff className="h-3.5 w-3.5"/>录音</Button>}</div></CardContent></Card>
     </aside>
 }

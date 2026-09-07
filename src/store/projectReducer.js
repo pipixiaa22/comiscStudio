@@ -145,6 +145,17 @@ export function projectReducer(state, action) {
                 const block = project.blocks.find(item => item.id === state.current);
                 if (block) block.status.scriptDone = true
             })
+        case 'COMPLETE_NEXT':
+            return contentUpdate(state, project => {
+                const index = project.blocks.findIndex(item => item.id === state.current)
+                const block = project.blocks[index]
+                if (!block) return
+                block.status.scriptDone = true
+                const requiresWork = item => !item.text.trim() || !item.assets.length || (project.narration?.mode === 'voice' && item.voice?.narrationRequired !== false && !item.voice?.activeTakeId)
+                const ordered = [...project.blocks.slice(index + 1), ...project.blocks.slice(0, index)]
+                const next = ordered.find(requiresWork)
+                if (next) project.workspace.currentBlockId = next.id
+            })
         case 'COMPLETE_ADD':
         case 'ADD_BLOCK':
             return contentUpdate(state, project => {

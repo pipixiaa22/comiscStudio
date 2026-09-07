@@ -5,6 +5,7 @@ export const projectActions = {
     updateText: (blockId, text, timestamp) => ({type: 'TEXT', blockId, text, timestamp}),
     complete: () => ({type: 'COMPLETE'}),
     completeAndAdd: () => ({type: 'COMPLETE_ADD'}),
+    completeAndNext: () => ({type: 'COMPLETE_NEXT'}),
     addBlock: () => ({type: 'ADD_BLOCK'}),
     insertTextBlocks: (texts, insertAfterId) => ({type: 'INSERT_TEXT_BLOCKS', texts, insertAfterId}),
     splitBlock: (blockId, offset) => ({type: 'SPLIT_BLOCK', blockId, offset}),

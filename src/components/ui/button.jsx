@@ -7,7 +7,7 @@ const variants = cva('inline-flex items-center justify-center gap-2 rounded-md t
             default: 'bg-orange-400 text-slate-950 hover:bg-orange-300',
             secondary: 'bg-slate-700 text-slate-100 hover:bg-slate-600',
             ghost: 'hover:bg-slate-800 text-slate-300'
-        }, size: {default: 'h-9 px-3', sm: 'h-8 px-2.5 text-xs', icon: 'h-9 w-9'}
+        }, size: {default: 'h-10 px-3', sm: 'h-9 px-2.5 text-xs', icon: 'h-9 w-9'}
     }, defaultVariants: {variant: 'default', size: 'default'}
 })
 
