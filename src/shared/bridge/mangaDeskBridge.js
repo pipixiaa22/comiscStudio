@@ -21,7 +21,6 @@ export const mangaDeskBridge = {
     openProject: async id => unwrap(await bridge().openProject(id)),
     renameProject: async (id, name) => unwrap(await bridge().renameProject(id, name)),
     archiveProject: async (id, archived) => unwrap(await bridge().archiveProject(id, archived)),
-    appendSources: async (id, sources, directory) => unwrap(await bridge().appendSources(id, sources, directory)),
     relocateSources: async (id, replacements) => unwrap(await bridge().relocateSources(id, replacements)),
     saveProject: async project => unwrap(await bridge().saveProject(project)),
     createProject: async input => unwrap(await bridge().createProject(input)),

@@ -24,11 +24,6 @@ function registerProjectIpc({ipcMain, projectService, sourceScanService, exportS
     }))
     ipcMain.handle('project:rename', (_, id, name) => result(async () => registerSources(await projectService.rename(id, name))))
     ipcMain.handle('project:archive', (_, id, archived) => result(async () => registerSources(await projectService.archive(id, archived))))
-    ipcMain.handle('project:append-sources', (_, id, sources, directory) => result(async () => {
-        const output = await projectService.appendSources(id, sources, directory);
-        registerSources(output.project);
-        return output
-    }))
     ipcMain.handle('project:relocate-sources', (_, id, replacements) => result(async () => registerSources(await projectService.relocateSources(id, replacements))))
 }
 

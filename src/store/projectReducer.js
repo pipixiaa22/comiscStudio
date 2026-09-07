@@ -1,3 +1,4 @@
+import {prepareSourceAdditions, validateVideoAsset} from '../shared/domain/mediaAsset'
 import {createId, now} from '../shared/lib/ids'
 import {appendHistory, redoHistory, undoHistory} from './history'
 import {normalizeProjectShape} from '../shared/domain/projectNormalize'
@@ -88,6 +89,45 @@ export function projectReducer(state, action) {
         case 'WORKSPACE_BLOCK':
         case 'SELECT':
             return updateWorkspace(state, {currentBlockId: action.blockId || action.id})
+        case 'APPEND_SOURCES': {
+            if (action.projectId !== state.project.id) return state
+            const additions = prepareSourceAdditions(state.project.sources, action.sources, createId)
+            if (!additions.length) return {...state, notice: '所选来源已在当前项目中'}
+            return contentUpdate(state, project => {
+                project.sources.push(...additions)
+                project.sourceDirectories ||= []
+                if (action.directory && !project.sourceDirectories.includes(action.directory)) project.sourceDirectories.push(action.directory)
+            })
+        }
+        case 'ADD_MEDIA_ASSET': {
+            const block = state.project.blocks.find(item => item.id === action.blockId)
+            const source = state.project.sources.find(item => item.id === action.asset?.sourceId)
+            const error = action.asset?.type === 'image'
+                ? (!source || source.mediaType !== 'image' || !isValidCrop(action.asset.crop) ? '素材或裁切范围无效' : null)
+                : validateVideoAsset(action.asset || {}, source)
+            if (!block || error) return {...state, notice: error || '目标 Block 不存在'}
+            return contentUpdate(state, project => {
+                const target = project.blocks.find(item => item.id === action.blockId)
+                target.assets.push({...action.asset, id: createId(), order: target.assets.length, createdAt: now()})
+                target.status.assetDone = false
+            })
+        }
+        case 'UPDATE_VIDEO_RANGE':
+        case 'SET_VIDEO_AUDIO': {
+            const block = state.project.blocks.find(item => item.id === action.blockId)
+            const asset = block?.assets.find(item => item.id === action.assetId)
+            if (asset?.type !== 'video') return state
+            const patch = action.type === 'UPDATE_VIDEO_RANGE'
+                ? {startUs: action.startUs, endUs: action.endUs, selectionBasis: 'time'} : {audio: action.audio}
+            const error = validateVideoAsset({...asset, ...patch}, state.project.sources.find(source => source.id === asset.sourceId))
+            if (error) return {...state, notice: error}
+            if (JSON.stringify({...asset, ...patch}) === JSON.stringify(asset)) return state
+            return contentUpdate(state, project => {
+                const target = project.blocks.find(item => item.id === action.blockId)
+                Object.assign(target.assets.find(item => item.id === action.assetId), patch)
+                target.status.assetDone = false
+            })
+        }
         case 'TEXT':
             return updateText(state, action)
         case 'COMPLETE':
@@ -107,7 +147,7 @@ export function projectReducer(state, action) {
                 project.workspace.currentBlockId = next.id
             })
         case 'ADD_ASSET': {
-            if (!state.project.sources.some(source => source.id === action.sourceId) || !isValidCrop(action.crop)) return {
+            if (!state.project.sources.some(source => source.id === action.sourceId && source.mediaType === 'image') || !isValidCrop(action.crop)) return {
                 ...state,
                 notice: '素材或裁切范围无效'
             }
@@ -115,6 +155,7 @@ export function projectReducer(state, action) {
                 const block = project.blocks.find(item => item.id === state.current);
                 if (block) block.assets.push({
                     id: createId(),
+                    type: 'image',
                     sourceId: action.sourceId,
                     crop: normalizeCrop(action.crop),
                     order: block.assets.length,
@@ -157,7 +198,7 @@ export function projectReducer(state, action) {
             })
         }
         case 'ADD_BASKET_ITEM': {
-            if (!state.project.sources.some(source => source.id === action.sourceId) || !isValidCrop(action.crop)) return {
+            if (!state.project.sources.some(source => source.id === action.sourceId && source.mediaType === 'image') || !isValidCrop(action.crop)) return {
                 ...state,
                 notice: '选区无效，请重新框选'
             }
@@ -170,6 +211,7 @@ export function projectReducer(state, action) {
                 ...contentUpdate(state, project => {
                     project.scratchBasket.push({
                         id: createId(),
+                        type: 'image',
                         sourceId: action.sourceId,
                         crop: normalizeCrop(action.crop),
                         order: project.scratchBasket.length,
@@ -204,7 +246,7 @@ export function projectReducer(state, action) {
         case 'ADD_BASKET_TO_BLOCK': {
             const item = state.project.scratchBasket.find(entry => entry.id === action.itemId)
             const block = state.project.blocks.find(entry => entry.id === action.blockId)
-            if (!item || !block || !state.project.sources.some(source => source.id === item.sourceId) || !isValidCrop(item.crop)) return {
+            if (!item || !block || !state.project.sources.some(source => source.id === item.sourceId && source.mediaType === 'image') || item.type === 'video-point' || item.type === 'video-range' || !isValidCrop(item.crop)) return {
                 ...state,
                 notice: '候选或目标 Block 已失效'
             }
@@ -213,6 +255,7 @@ export function projectReducer(state, action) {
                     const target = project.blocks.find(entry => entry.id === action.blockId);
                     target.assets.push({
                         id: createId(),
+                        type: 'image',
                         sourceId: item.sourceId,
                         crop: normalizeCrop(item.crop),
                         order: target.assets.length,
@@ -307,6 +350,7 @@ export function projectReducer(state, action) {
                     const copy = {
                         ...structuredClone(project.blocks[index]),
                         id: createId(),
+                        assets: project.blocks[index].assets.map(asset => ({...structuredClone(asset), id: createId()})),
                         createdAt: now(),
                         updatedAt: now()
                     };

@@ -3,6 +3,8 @@ const path = require('path')
 const crypto = require('crypto')
 const {normalizeProjectShape} = require('../../src/shared/domain/projectNormalize')
 
+const {prepareSourceAdditions} = require('../../src/shared/domain/mediaAsset')
+
 const now = () => Date.now()
 const id = () => crypto.randomUUID()
 
@@ -49,16 +51,9 @@ class ProjectService {
 
     async create({name, sourceDirectory, sources = []}) {
         const time = now();
-        const cleanSources = sources.map(source => ({
-            id: id(),
-            path: source.path,
-            fileName: source.name,
-            kind: source.kind,
-            pdfPath: source.pdfPath,
-            pageNumber: source.pageNumber
-        }));
+        const cleanSources = prepareSourceAdditions([], sources, id);
         const project = normalize({
-            schemaVersion: 2,
+            schemaVersion: 3,
             id: id(),
             name,
             sourceDirectories: [sourceDirectory],
@@ -98,15 +93,18 @@ class ProjectService {
 
     async load(id) {
         const file = this.file(id);
+        let raw
         try {
-            return normalize(JSON.parse(await fs.readFile(file, 'utf8')))
+            raw = JSON.parse(await fs.readFile(file, 'utf8'))
         } catch (error) {
             try {
-                return normalize(JSON.parse(await fs.readFile(`${file}.bak`, 'utf8')))
+                raw = JSON.parse(await fs.readFile(`${file}.bak`, 'utf8'))
             } catch {
                 throw error
             }
         }
+        // A valid but unsupported schema must never silently open an older backup.
+        return normalize(raw)
     }
 
     async recent() {
@@ -151,23 +149,6 @@ class ProjectService {
         const project = await this.load(id);
         project.archived = Boolean(archived);
         return this.save(project)
-    }
-
-    async appendSources(id, sources, sourceDirectory) {
-        const project = await this.load(id),
-            existing = new Set(project.sources.map(source => `${source.path}|${source.pageNumber || ''}`))
-        const additions = (sources || []).filter(source => source?.path && !existing.has(`${source.path}|${source.pageNumber || ''}`)).map(source => ({
-            id: crypto.randomUUID(),
-            path: source.path,
-            fileName: source.name,
-            kind: source.kind,
-            pdfPath: source.pdfPath,
-            pageNumber: source.pageNumber
-        }))
-        if (!additions.length) return {project, added: 0}
-        project.sources.push(...additions)
-        if (sourceDirectory && !project.sourceDirectories.includes(sourceDirectory)) project.sourceDirectories.push(sourceDirectory)
-        return {project: await this.save(project), added: additions.length}
     }
 
     async relocateSources(id, replacements) {

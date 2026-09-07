@@ -13,6 +13,8 @@ import {ExportView} from './features/export/components/ExportView'
 import {useProjectStore} from './store/ProjectStoreProvider'
 import {useShortcutScope} from './shared/hooks/useShortcutScope'
 import {mangaDeskBridge} from './shared/bridge/mangaDeskBridge'
+import {prepareSourceAdditions} from './shared/domain/mediaAsset'
+import {createId} from './shared/lib/ids'
 import {hydrateSources} from './features/project/projectSources'
 import {ProjectCenter} from './features/project/components/ProjectCenter'
 
@@ -32,13 +34,16 @@ export default function App() {
     const [error, setError] = useState('')
     const origin = useRef()
     const project = state.project
+    const latestProject = useRef(project)
+    latestProject.current = project
     const sourcesById = useMemo(() => new Map(sources.filter(source => source.sourceId).map(source => [source.sourceId, source])), [sources])
     const favoriteIds = useMemo(() => new Set((project?.favorites || []).map(entry => entry.sourceId)), [project?.favorites])
     const usageIndex = useMemo(() => buildUsageIndex(blocks), [blocks])
     const filteredSources = useMemo(() => {
         const favoriteOrder = new Map((project?.favorites || []).map(entry => [entry.sourceId, entry.createdAt]))
-        return sources.filter((source, index) => (browserView !== 'favorites' || favoriteIds.has(source.sourceId)) && `${index + 1} ${source.name}`.toLowerCase().includes(search.toLowerCase())).sort((left, right) => browserView === 'favorites' ? (favoriteOrder.get(right.sourceId) || 0) - (favoriteOrder.get(left.sourceId) || 0) : 0)
-    }, [sources, browserView, favoriteIds, search, project?.favorites])
+        const registeredIds = new Set((project?.sources || []).map(source => source.id))
+        return sources.filter((source, index) => registeredIds.has(source.sourceId) && (browserView !== 'favorites' || favoriteIds.has(source.sourceId)) && `${index + 1} ${source.name}`.toLowerCase().includes(search.toLowerCase())).sort((left, right) => browserView === 'favorites' ? (favoriteOrder.get(right.sourceId) || 0) - (favoriteOrder.get(left.sourceId) || 0) : 0)
+    }, [sources, browserView, favoriteIds, search, project?.favorites, project?.sources])
     const chooseSource = useCallback(source => {
         setSelectedSource(source)
         if (source?.sourceId && source.sourceId !== project?.workspace?.currentSourceId) commands.selectSource(source.sourceId)
@@ -111,12 +116,12 @@ export default function App() {
         try {
             const source = await (kind === 'pdf' ? mangaDeskBridge.choosePdf() : mangaDeskBridge.chooseDirectory())
             if (!source?.images?.length) return
-            const output = await mangaDeskBridge.appendSources(project.id, source.images, source.sourcePath || source.directory)
-            const additions = hydrateSources(source.images, output.project).filter(source => source.sourceId)
-            commands.load(output.project)
-            setSources(current => [...current, ...additions.filter(item => !current.some(existing => existing.sourceId === item.sourceId))])
-            setSelectedSource(additions[0] || null)
-            if (!output.added) setError('所选来源已在当前项目中')
+            if (latestProject.current?.id !== project.id) return
+            const additions = prepareSourceAdditions(latestProject.current.sources, source.images, createId)
+            commands.appendSources(project.id, additions, source.sourcePath || source.directory)
+            const hydrated = hydrateSources(source.images, {sources: [...latestProject.current.sources, ...additions]})
+            setSources(current => [...current, ...hydrated.filter(item => !current.some(existing => existing.sourceId === item.sourceId))])
+            setSelectedSource(hydrated[0] || null)
         } catch (error) { setError(error instanceof Error ? error.message : '追加来源失败') }
     }, [commands, project])
     const openProject = useCallback(async id => {

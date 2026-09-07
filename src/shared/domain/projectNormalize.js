@@ -1,14 +1,13 @@
+const {normalizeSource, normalizeAsset} = require('./mediaAsset')
+
 function normalizeProjectShape(project, createBlock, timestamp) {
-    if (Number(project.schemaVersion || 1) > 2) throw new Error(`项目版本 ${project.schemaVersion} 高于当前支持版本 2，已阻止降级保存`)
+    if (Number(project.schemaVersion || 1) > 3) throw new Error(`项目版本 ${project.schemaVersion} 高于当前支持版本 3，已阻止降级保存`)
     const blocks = (Array.isArray(project.blocks) && project.blocks.length ? project.blocks : [createBlock(0)]).map((block, order) => {
         const base = createBlock(order)
         return {
             ...base, ...block, id: typeof block?.id === 'string' ? block.id : base.id, order,
-            assets: Array.isArray(block?.assets) ? block.assets.filter(asset => asset?.sourceId).map((asset, assetOrder) => ({
-                ...asset,
-                order: assetOrder
-            })) : [],
-            status: {...base.status, ...(block?.status || {})},
+            assets: Array.isArray(block?.assets) ? block.assets.map((asset, assetOrder) => normalizeAsset(asset, assetOrder)) : [],
+            status: {...base.status, ...(block?.status || {}), edited: block?.status?.edited ?? block?.status?.placed ?? false},
             voice: {
                 activeTakeId: null,
                 takes: [],
@@ -22,7 +21,8 @@ function normalizeProjectShape(project, createBlock, timestamp) {
     const currentBlockId = blocks.some(block => block.id === project.workspace?.currentBlockId) ? project.workspace.currentBlockId : blocks[0].id
     return {
         ...project,
-        schemaVersion: 2,
+        schemaVersion: 3,
+        sources: (project.sources || []).map(normalizeSource),
         narration: {mode: 'text', defaultGapAfterMs: 300, ...(project.narration || {})},
         blocks,
         favorites: Array.isArray(project.favorites) ? project.favorites : [],
@@ -30,7 +30,7 @@ function normalizeProjectShape(project, createBlock, timestamp) {
             ...item,
             order
         })) : [],
-        workspace: {currentBlockId, currentSourceId: project.workspace?.currentSourceId || null},
+        workspace: {...(project.workspace || {}), activeMediaTab: project.workspace?.activeMediaTab || 'image', videoPositions: {...(project.workspace?.videoPositions || {})}, currentBlockId, currentSourceId: project.workspace?.currentSourceId || null},
         updatedAt: timestamp
     }
 }

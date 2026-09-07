@@ -55,6 +55,8 @@ function createExportPlan(project, options = {}) {
     if (!block.status?.scriptDone || !block.status?.assetDone) warnings.push({ code: 'INCOMPLETE_STATUS', blockId: block.id, message: `#${blockIndex + 1} 有人工状态未完成` })
     const planAssets = assets.map((asset, assetIndex) => {
       const source = sourceById.get(asset.sourceId)
+      if (asset.type === 'video' || source?.mediaType === 'video') errors.push({ code: 'UNSUPPORTED_VIDEO', blockId: block.id, assetId: asset.id, message: '视频交付尚未开放，请等待动漫导出功能' })
+      else if (asset.type && asset.type !== 'image') errors.push({ code: 'UNSUPPORTED_MEDIA_TYPE', blockId: block.id, assetId: asset.id, message: '不支持的素材类型' })
       const sourceExtension = source ? path.extname(sourceFile(source)).toLowerCase() : ''
       if (source && sourceFile(source) && sourceExtension !== '.pdf' && !supportedImageTypes.has(sourceExtension)) errors.push({ code: 'UNSUPPORTED_FORMAT', blockId: block.id, assetId: asset.id, message: `#${blockIndex + 1} contains an unsupported source format` })
       if (!source) errors.push({ code: 'SOURCE_NOT_FOUND', blockId: block.id, assetId: asset.id, message: `#${blockIndex + 1} 有悬空素材引用` })

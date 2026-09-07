@@ -35,7 +35,6 @@ contextBridge.exposeInMainWorld('mangaDesk', {
     openProject: id => ipcRenderer.invoke('project:open', id),
     renameProject: (id, name) => ipcRenderer.invoke('project:rename', id, name),
     archiveProject: (id, archived) => ipcRenderer.invoke('project:archive', id, archived),
-    appendSources: (id, sources, directory) => ipcRenderer.invoke('project:append-sources', id, sources, directory),
     relocateSources: (id, replacements) => ipcRenderer.invoke('project:relocate-sources', id, replacements),
     copyText: text => ipcRenderer.invoke('system:copy-text', text)
     ,
