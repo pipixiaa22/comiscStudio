@@ -1,8 +1,15 @@
 const path = require('path')
+const {validateVideoAsset} = require('../../src/shared/domain/mediaAsset')
 
 const illegalName = /[<>:"/\\|?*\x00-\x1f]/
 const deviceName = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i
 const supportedImageTypes = new Set(['.jpg', '.jpeg', '.png', '.webp', '.bmp'])
+const videoIssueText = code => ({
+    SOURCE_NOT_FOUND: '素材来源不是可用视频',
+    INVALID_VIDEO_RANGE: '视频区间超出来源或无效',
+    VIDEO_STREAM_UNAVAILABLE: '视频流与来源不符',
+    AUDIO_STREAM_UNAVAILABLE: '原声音轨选择无效'
+}[code] || '视频素材无效')
 function validatePackageName(name) {
   const value = String(name || '')
   if (!value || value.length > 120 || illegalName.test(value) || /[. ]$/.test(value) || deviceName.test(value)) return '请输入合法的素材包名称'
@@ -55,16 +62,25 @@ function createExportPlan(project, options = {}) {
     if (!block.status?.scriptDone || !block.status?.assetDone) warnings.push({ code: 'INCOMPLETE_STATUS', blockId: block.id, message: `#${blockIndex + 1} 有人工状态未完成` })
     const planAssets = assets.map((asset, assetIndex) => {
       const source = sourceById.get(asset.sourceId)
-      if (asset.type === 'video' || source?.mediaType === 'video') errors.push({ code: 'UNSUPPORTED_VIDEO', blockId: block.id, assetId: asset.id, message: '视频交付尚未开放，请等待动漫导出功能' })
-      else if (asset.type && asset.type !== 'image') errors.push({ code: 'UNSUPPORTED_MEDIA_TYPE', blockId: block.id, assetId: asset.id, message: '不支持的素材类型' })
+      const position = `${String(blockIndex + 1).padStart(blockDigits, '0')}_${String(assetIndex + 1).padStart(assetDigits, '0')}`
+      const base = { blockId: block.id, assetId: asset.id, sourceId: asset.sourceId, source, type: asset.type || 'image', blockPosition: blockIndex + 1, assetPosition: assetIndex + 1 }
+      if (!source) {
+        errors.push({ code: 'SOURCE_NOT_FOUND', blockId: block.id, assetId: asset.id, message: `#${blockIndex + 1} 有悬空素材引用` })
+        return { ...base, file: null }
+      }
+      if (asset.type === 'video') {
+        const code = source.mediaType === 'video' ? validateVideoAsset(asset, source) : 'SOURCE_NOT_FOUND'
+        if (code) errors.push({ code, blockId: block.id, assetId: asset.id, message: `#${blockIndex + 1} 第 ${assetIndex + 1} 项 ${videoIssueText(code)}` })
+        // Videos and images share one block/asset sequence but land in their own folders.
+        return { ...base, type: 'video', file: `videos/${position}.mp4`, startUs: asset.startUs, endUs: asset.endUs, videoStreamIndex: asset.videoStreamIndex, audio: asset.audio, selectionBasis: asset.selectionBasis }
+      }
+      if (asset.type && asset.type !== 'image') errors.push({ code: 'UNSUPPORTED_MEDIA_TYPE', blockId: block.id, assetId: asset.id, message: '不支持的素材类型' })
       const sourceExtension = source ? path.extname(sourceFile(source)).toLowerCase() : ''
       if (source && sourceFile(source) && sourceExtension !== '.pdf' && !supportedImageTypes.has(sourceExtension)) errors.push({ code: 'UNSUPPORTED_FORMAT', blockId: block.id, assetId: asset.id, message: `#${blockIndex + 1} contains an unsupported source format` })
-      if (!source) errors.push({ code: 'SOURCE_NOT_FOUND', blockId: block.id, assetId: asset.id, message: `#${blockIndex + 1} 有悬空素材引用` })
       else if (!sourceFile(source)) errors.push({ code: 'SOURCE_INVALID', blockId: block.id, assetId: asset.id, message: `#${blockIndex + 1} 来源路径无效` })
       else if (path.extname(sourceFile(source)).toLowerCase() === '.gif') errors.push({ code: 'UNSUPPORTED_FORMAT', blockId: block.id, assetId: asset.id, message: `#${blockIndex + 1} 包含未支持的 GIF 素材` })
       if (!validCrop(asset.crop)) errors.push({ code: 'INVALID_CROP', blockId: block.id, assetId: asset.id, message: `#${blockIndex + 1} 有无效裁切范围` })
-      const file = `images/${String(blockIndex + 1).padStart(blockDigits, '0')}_${String(assetIndex + 1).padStart(assetDigits, '0')}.${extensionFor(options)}`
-      return { blockId: block.id, assetId: asset.id, sourceId: asset.sourceId, source, crop: asset.crop, file, blockPosition: blockIndex + 1, assetPosition: assetIndex + 1 }
+      return { ...base, crop: asset.crop, file: `images/${position}.${extensionFor(options)}` }
     })
     entries.push({ block, position: blockIndex + 1, assets: planAssets })
   })

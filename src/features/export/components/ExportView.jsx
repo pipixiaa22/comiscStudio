@@ -154,7 +154,11 @@ export function ExportView({project, revision, onClose}) {
                         onClick={() => mangaDeskBridge.cancelExport(job)}>取消</Button>}</div>}
             {preflight &&
                 <section className="mt-5 rounded border border-slate-700 p-3 text-sm"><b>预检：{preflight.blockCount} 个
-                    Block，{preflight.assetCount} 项素材</b>{preflight.errors.length > 0 &&
+                    Block，{preflight.assetCount} 项素材</b>{preflight.imageCount > 0 || preflight.videoCount > 0 ?
+                    <span className="ml-2 text-slate-400">（图片 {preflight.imageCount} · 视频
+                        {preflight.videoCount}）</span> : null}{preflight.videoCount > 0 && <p className="mt-1 text-xs text-amber-200">视频片段将按各自选区重新编码为
+                        MP4/H.264；静音或保留原声遵循每个素材的交付策略，原文件不会被修改。</p>}
+                    {preflight.errors.length > 0 &&
                     <ul className="mt-2 list-inside list-disc text-red-300">{preflight.errors.map((item, index) => <li
                         key={index}>{item.message}</li>)}</ul>}{preflight.warnings.length > 0 && <>
                     <ul className="mt-2 list-inside list-disc text-amber-300">{preflight.warnings.map((item, index) =>

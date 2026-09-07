@@ -7,8 +7,9 @@ const {writeScript, writeSubtitles, writeStoryboard} = require('./ExportWriters'
 const {validateNarration, writeNarration} = require('./NarrationExportService')
 
 class ExportService {
-    constructor(projectService = null) {
+    constructor(projectService = null, renderService = null) {
         this.projectService = projectService;
+        this.renderService = renderService;
         this.destinations = new Map();
         this.projects = new Map();
         this.jobs = new Map()
@@ -57,6 +58,7 @@ class ExportService {
         }
         if (result.plan?.narrationMode === 'voice') result.errors.push(...await validateNarration(result.plan.project, this.projectRoot(result.plan.project.id)))
         if (result.plan) {
+            if (result.plan.assets.some(asset => asset.type === 'video') && !(this.renderService && await this.renderService.available())) result.errors.push({code: 'FFMPEG_UNAVAILABLE', message: '导出视频需要可用的 ffmpeg 工具链；开发环境可设置 COMISC_FFMPEG_PATH'})
             const checked = new Set()
             for (const asset of result.plan.assets) {
                 const file = sourceFile(asset.source)
@@ -73,13 +75,15 @@ class ExportService {
             errors: result.errors,
             warnings: result.warnings,
             assetCount: result.plan?.assets.length || 0,
+            imageCount: result.plan?.assets.filter(asset => asset.type !== 'video').length || 0,
+            videoCount: result.plan?.assets.filter(asset => asset.type === 'video').length || 0,
             blockCount: result.plan?.entries.length || 0
         }
     }
 
     start({projectSnapshot, options, packageName, destinationToken, projectRevision}, send) {
         const jobId = crypto.randomUUID(),
-            job = {id: jobId, cancelled: false, status: 'validating', output: null, error: null}
+            job = {id: jobId, cancelled: false, status: 'validating', output: null, error: null, children: new Set()}
         this.jobs.set(jobId, job)
         void this.run(job, {
             projectSnapshot: structuredClone(projectSnapshot),
@@ -95,6 +99,7 @@ class ExportService {
         const job = this.jobs.get(jobId);
         if (!job || job.status === 'finalizing' || job.status === 'succeeded') return false;
         job.cancelled = true;
+        for (const child of job.children) child.kill()
         return true
     }
 
@@ -114,6 +119,7 @@ class ExportService {
             temporary = path.join(destination, `.mangadesk-export-${job.id}.partial`)
             if (await exists(output)) throw new Error('同名素材包已存在，请修改名称')
             await fs.mkdir(path.join(temporary, 'images'), {recursive: true})
+            await fs.mkdir(path.join(temporary, 'videos'), {recursive: true})
             await fs.writeFile(path.join(temporary, '.mangadesk-export'), job.id, 'utf8')
             job.status = 'rendering';
             emit({stage: 'rendering', completed: 0, total: plan.assets.length})
@@ -121,13 +127,42 @@ class ExportService {
             for (let index = 0; index < plan.assets.length; index += 1) {
                 if (job.cancelled) throw new Error('EXPORT_CANCELLED')
                 const asset = plan.assets[index];
-                const result = await renderAsset(asset, path.join(temporary, asset.file), input.options)
-                manifestAssets.push({
-                    blockId: asset.blockId,
-                    assetId: asset.assetId,
-                    sourceId: asset.sourceId,
-                    file: asset.file.replace(/\\/g, '/'), ...result
-                })
+                const output = path.join(temporary, asset.file)
+                let result
+                if (asset.type === 'video') {
+                    try {
+                        result = await this.renderService.renderClip({
+                            source: asset.source,
+                            clip: asset,
+                            output,
+                            poster: output.replace(/\.mp4$/i, '.jpg'),
+                            children: job.children
+                        })
+                    } catch (error) {
+                        if (job.cancelled) throw new Error('EXPORT_CANCELLED')
+                        throw error
+                    }
+                } else {
+                    result = await renderAsset(asset, output, input.options)
+                }
+                const base = {blockId: asset.blockId, assetId: asset.assetId, sourceId: asset.sourceId, type: asset.type, file: asset.file.replace(/\\/g, '/')}
+                manifestAssets.push(asset.type === 'video' ? {
+                    ...base,
+                    startUs: asset.startUs,
+                    endUs: asset.endUs,
+                    videoStreamIndex: asset.videoStreamIndex,
+                    audio: asset.audio,
+                    selectionBasis: asset.selectionBasis,
+                    sourceFingerprint: asset.source?.fingerprint || null,
+                    width: result.width,
+                    height: result.height,
+                    durationUs: result.durationUs,
+                    audioStreams: result.audioStreams?.length || 0,
+                    frameIntervalUs: result.frameIntervalUs,
+                    codec: result.codec,
+                    encoder: result.encoder,
+                    toolVersion: result.toolVersion
+                } : {...base, ...result})
                 emit({stage: 'rendering', completed: index + 1, total: plan.assets.length})
             }
             if (job.cancelled) throw new Error('EXPORT_CANCELLED')
@@ -157,6 +192,14 @@ class ExportService {
                             backgroundColor: input.options.backgroundColor || '#F4EBD9'
                         },
                         renderer: 'sharp-v1',
+                        video: plan.assets.some(asset => asset.type === 'video') ? {
+                            encoder: 'libx264',
+                            crf: 18,
+                            container: 'mp4',
+                            audioCodec: 'aac',
+                            framePolicy: 'preserve-source-timing',
+                            reencoded: true
+                        } : null,
                         subtitles: plan.narrationMode === 'text' ? {
                             generated: true,
                             format: 'srt',

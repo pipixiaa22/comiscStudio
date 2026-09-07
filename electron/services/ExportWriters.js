@@ -66,13 +66,28 @@ async function writeSubtitles(root, entries) {
   await fs.writeFile(path.join(root, 'subtitles.srt'), `\ufeff${cues.join('\r\n')}`, 'utf8')
 }
 
+function videoCaption(asset) {
+  const seconds = Number.isSafeInteger(asset.startUs) && Number.isSafeInteger(asset.endUs) ? ((asset.endUs - asset.startUs) / 1000000).toFixed(3) : null
+  const audio = asset.audio?.mode === 'keep' ? '保留原声' : '静音'
+  return `视频 · ${seconds ? `${seconds} 秒 · ` : ''}交付：${audio}`
+}
+
+function mediaFigure(asset) {
+  const safe = value => escapeHtml(path.basename(value))
+  if (asset.type === 'video') {
+    const poster = String(asset.file).replace(/\.mp4$/i, '.jpg')
+    return `<figure><video src="${encodeURI(asset.file)}" poster="${encodeURI(poster)}" controls preload="none"></video><figcaption>${safe(asset.file)} · ${escapeHtml(videoCaption(asset))}</figcaption></figure>`
+  }
+  return `<figure><img src="${encodeURI(asset.file)}" loading="lazy" alt="${escapeHtml(asset.file)}"><figcaption>${safe(asset.file)}</figcaption></figure>`
+}
+
 async function writeStoryboard(root, plan, exportedAt) {
   const cards = plan.entries.map(entry => {
-    const images = entry.assets.length ? entry.assets.map(asset => `<figure><img src="${encodeURI(asset.file)}" loading="lazy" alt="${escapeHtml(asset.file)}"><figcaption>${escapeHtml(path.basename(asset.file))}</figcaption></figure>`).join('') : '<p class="empty">未选择画面</p>'
+    const images = entry.assets.length ? entry.assets.map(asset => mediaFigure(asset)).join('') : '<p class="empty">未选择画面</p>'
     const text = entry.block.text ? escapeHtml(entry.block.text) : '<span class="empty">（空文案）</span>'
     return `<article><header><b>#${pad(entry.position, plan.blockDigits)}</b><span>${entry.assets.length} 项素材</span></header><div class="text">${text}</div><section>${images}</section></article>`
   }).join('\n')
-  const html = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(plan.project.name)} · Storyboard</title><style>body{margin:0;background:#11151d;color:#e6edf3;font:15px/1.65 system-ui,"Microsoft YaHei",sans-serif}main{max-width:1100px;margin:auto;padding:24px}h1{margin:0}header.meta{margin:0 0 20px;color:#9da7b3}article{margin:16px 0;padding:18px;border:1px solid #344050;border-radius:10px;background:#181e29}article header{display:flex;justify-content:space-between;color:#ffbd75}.text{white-space:pre-wrap;margin:14px 0}section{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}figure{margin:0;background:#0b0e14}img{display:block;width:100%;height:auto;max-height:500px;object-fit:contain}figcaption{padding:5px 8px;color:#9da7b3;font-size:12px}.empty{color:#ffcf79}@media print{body{background:#fff;color:#111}article{break-inside:avoid;background:#fff;border-color:#bbb}img{max-height:none}}</style><main><h1>${escapeHtml(plan.project.name)}</h1><header class="meta">导出时间：${escapeHtml(new Date(exportedAt).toLocaleString())} · ${plan.entries.length} 个 Block</header>${cards}</main></html>`
+  const html = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(plan.project.name)} · Storyboard</title><style>body{margin:0;background:#11151d;color:#e6edf3;font:15px/1.65 system-ui,"Microsoft YaHei",sans-serif}main{max-width:1100px;margin:auto;padding:24px}h1{margin:0}header.meta{margin:0 0 20px;color:#9da7b3}article{margin:16px 0;padding:18px;border:1px solid #344050;border-radius:10px;background:#181e29}article header{display:flex;justify-content:space-between;color:#ffbd75}.text{white-space:pre-wrap;margin:14px 0}section{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}figure{margin:0;background:#0b0e14}img,video{display:block;width:100%;height:auto;max-height:500px;object-fit:contain;background:#000}figcaption{padding:5px 8px;color:#9da7b3;font-size:12px}.empty{color:#ffcf79}@media print{body{background:#fff;color:#111}article{break-inside:avoid;background:#fff;border-color:#bbb}img{max-height:none}}</style><main><h1>${escapeHtml(plan.project.name)}</h1><header class="meta">导出时间：${escapeHtml(new Date(exportedAt).toLocaleString())} · ${plan.entries.length} 个 Block</header>${cards}</main></html>`
   await fs.writeFile(path.join(root, 'storyboard.html'), html, 'utf8')
 }
 

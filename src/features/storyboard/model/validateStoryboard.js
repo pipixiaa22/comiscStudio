@@ -9,7 +9,6 @@ export const ISSUE_LABELS = {
     INVALID_VIDEO_RANGE: '视频区间无效',
     VIDEO_STREAM_UNAVAILABLE: '视频流不可用',
     AUDIO_STREAM_UNAVAILABLE: '原声音轨不可用',
-    UNSUPPORTED_VIDEO: '视频交付尚未开放',
     INVALID_CROP: '裁切范围无效'
 }
 
@@ -32,7 +31,7 @@ export function validateStoryboard(project, sourceStatus = {}) {
             })
             if (asset.type === 'video') {
                 const code = validateVideoAsset(asset, project.sources.find(source => source.id === asset.sourceId))
-                issues.push({code: code || 'UNSUPPORTED_VIDEO', assetId: asset.id, sourceId: asset.sourceId})
+                if (code) issues.push({code, assetId: asset.id, sourceId: asset.sourceId})
             } else if (!isValidCrop(asset.crop)) issues.push({
                 code: 'INVALID_CROP',
                 assetId: asset.id,
