@@ -54,7 +54,10 @@ class SourceScanService {
       if (!source || typeof source.id !== 'string' || typeof source.path !== 'string') continue
       const pdfPath = source.pdfPath || (source.path.includes('#page=') ? source.path.slice(0, source.path.lastIndexOf('#page=')) : null)
       try {
-        if (!pdfPath) await fs.access(source.path)
+        if (source.mediaType === 'video') {
+          const stat = await fs.stat(source.path)
+          if (stat.size !== source.fingerprint?.size || stat.mtimeMs !== source.fingerprint?.mtimeMs) throw new Error('原视频已改变，请恢复原文件或重新确认来源')
+        } else if (!pdfPath) await fs.access(source.path)
         else {
           if (!pdfChecks.has(pdfPath)) pdfChecks.set(pdfPath, this.pdfPageCount(pdfPath))
           const pageCount = await pdfChecks.get(pdfPath)

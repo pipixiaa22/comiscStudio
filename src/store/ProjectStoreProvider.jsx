@@ -26,7 +26,13 @@ export function ProjectStoreProvider({children}) {
         void mangaDeskBridge.voice.restoreTake(state.pendingVoiceRestore).finally(() => dispatch({type: 'VOICE_RESTORE_HANDLED'}))
     }, [state.pendingVoiceRestore])
     const commands = useMemo(() => ({
-        appendSources: (projectId, sources, directory) => dispatch({type: 'APPEND_SOURCES', projectId, sources, directory}),
+        setVideoWorkspace: patch => dispatch({type: 'VIDEO_WORKSPACE', patch}),
+        appendSources: (projectId, sources, directory) => dispatch({
+            type: 'APPEND_SOURCES',
+            projectId,
+            sources,
+            directory
+        }),
         addMediaAsset: payload => dispatch({...payload, type: 'ADD_MEDIA_ASSET'}),
         updateVideoRange: payload => dispatch({...payload, type: 'UPDATE_VIDEO_RANGE'}),
         setVideoAudio: payload => dispatch({...payload, type: 'SET_VIDEO_AUDIO'}),

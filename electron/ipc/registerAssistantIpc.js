@@ -18,6 +18,7 @@ function registerAssistantIpc({ ipcMain, shell, clipboard, assistantWindowServic
   ipcMain.handle('assistant:prepare', (event, input) => result(async () => {
     if (!validAssistant(event) || !snapshot || input?.sessionId !== snapshot.sessionId || input?.revision !== snapshot.revision) throw new Error('内容已更新，请重试')
     const block = snapshot.blocks.find(item => item.id === input.blockId), asset = block?.assets.find(item => item.id === input.assetId)
+    if (asset?.type === 'video' || asset?.source?.mediaType === 'video') throw new Error('视频拖出尚未开放')
     if (!asset?.source) throw new Error('素材来源不可用')
     const key = `${snapshot.projectId}:${block.id}:${asset.id}:${JSON.stringify(asset.crop || null)}`
     const existing = [...tokens.values()].find(item => item.key === key)

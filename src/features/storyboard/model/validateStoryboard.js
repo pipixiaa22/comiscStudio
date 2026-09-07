@@ -9,7 +9,7 @@ export const ISSUE_LABELS = {
     INVALID_VIDEO_RANGE: '视频区间无效',
     VIDEO_STREAM_UNAVAILABLE: '视频流不可用',
     AUDIO_STREAM_UNAVAILABLE: '原声音轨不可用',
-    UNSUPPORTED_VIDEO: '视频预览与交付尚未开放',
+    UNSUPPORTED_VIDEO: '视频交付尚未开放',
     INVALID_CROP: '裁切范围无效'
 }
 

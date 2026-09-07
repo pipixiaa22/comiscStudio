@@ -53,7 +53,12 @@ export function VoiceRecorderPanel({
         queue.current = queue.current.then(() => mangaDeskBridge.voice.append(input));
         await queue.current
     }
+    const setRecordingGuard = active => {
+        window.__studioRecording = active
+        window.dispatchEvent(new CustomEvent('studio:recording', {detail: active}))
+    }
     const release = async () => {
+        setRecordingGuard(false)
         processor.current?.disconnect();
         gain.current?.disconnect();
         stream.current?.getTracks().forEach(track => track.stop());
@@ -83,6 +88,7 @@ export function VoiceRecorderPanel({
         try {
             setError('');
             setState('requestingPermission');
+            setRecordingGuard(true)
             const media = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     deviceId: deviceId === 'default' ? undefined : {exact: deviceId},

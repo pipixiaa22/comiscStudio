@@ -35,6 +35,12 @@ export const mangaDeskBridge = {
     openExportDirectory: jobId => bridge().openExportDirectory(jobId),
     openExportStoryboard: jobId => bridge().openExportStoryboard(jobId),
     onExportProgress: callback => bridge().onExportProgress(callback),
+    video: {
+        choose: async projectId => unwrap(await bridge().video.choose(projectId)),
+        playback: async input => unwrap(await bridge().video.playback(input)),
+        resolveBoundary: async input => unwrap(await bridge().video.resolveBoundary(input)),
+        onProgress: callback => bridge().video.onProgress(callback)
+    },
     voice: {
         start: async input => unwrap(await bridge().voice.start(input)),
         append: async input => unwrap(await bridge().voice.append(input)),

@@ -20,6 +20,9 @@ import {ProjectCenter} from './features/project/components/ProjectCenter'
 
 export default function App() {
     const {state, blocks, currentBlock, currentBlockIndex, commands} = useProjectStore()
+    const [videoImporting, setVideoImporting] = useState(false)
+    const [videoProgress, setVideoProgress] = useState('')
+    const [locatedVideo, setLocatedVideo] = useState(null)
     const [sources, setSources] = useState([])
     const [selectedSource, setSelectedSource] = useState(null)
     const [search, setSearch] = useState('')
@@ -36,7 +39,7 @@ export default function App() {
     const project = state.project
     const latestProject = useRef(project)
     latestProject.current = project
-    const sourcesById = useMemo(() => new Map(sources.filter(source => source.sourceId).map(source => [source.sourceId, source])), [sources])
+    const sourcesById = useMemo(() => new Map([...sources.filter(source => source.sourceId).map(source => [source.sourceId, source]), ...(project?.sources || []).filter(source => source.mediaType === 'video').map(source => [source.id, source])]), [sources, project?.sources])
     const favoriteIds = useMemo(() => new Set((project?.favorites || []).map(entry => entry.sourceId)), [project?.favorites])
     const usageIndex = useMemo(() => buildUsageIndex(blocks), [blocks])
     const filteredSources = useMemo(() => {
@@ -87,6 +90,12 @@ export default function App() {
         setView('workspace')
     }, [commands])
     const locateAsset = useCallback(asset => {
+        if (asset.type === 'video') {
+            commands.setVideoWorkspace({activeMediaTab: 'video', currentVideoSourceId: asset.sourceId})
+            setLocatedVideo({asset, requestId: Date.now()})
+            setView('workspace')
+            return
+        }
         const source = sourcesById.get(asset.sourceId)
         if (!source) {
             setError('原图不可用');
@@ -98,7 +107,7 @@ export default function App() {
         setLocatedCrop(asset.crop ? {sourceId: asset.sourceId, crop: asset.crop} : null)
         chooseSource(source)
         openReader(source)
-    }, [chooseSource, openReader, sourcesById])
+    }, [chooseSource, openReader, sourcesById, commands])
     const editStoryboardBlock = useCallback(blockId => {
         setStoryReturnBlockId(blockId)
         commands.selectBlock(blockId)
@@ -122,13 +131,35 @@ export default function App() {
             const hydrated = hydrateSources(source.images, {sources: [...latestProject.current.sources, ...additions]})
             setSources(current => [...current, ...hydrated.filter(item => !current.some(existing => existing.sourceId === item.sourceId))])
             setSelectedSource(hydrated[0] || null)
-        } catch (error) { setError(error instanceof Error ? error.message : '追加来源失败') }
+        } catch (error) {
+            setError(error instanceof Error ? error.message : '追加来源失败')
+        }
     }, [commands, project])
+    useEffect(() => mangaDeskBridge.video.onProgress(progress => {
+        if (latestProject.current?.id === progress.projectId) setVideoProgress(`探测 ${progress.current}/${progress.total}`)
+    }), [])
+    const importVideo = useCallback(async () => {
+        if (!project || videoImporting) return
+        const projectId = project.id
+        setVideoImporting(true); setVideoProgress('选择视频…')
+        try {
+            const result = await mangaDeskBridge.video.choose(projectId)
+            if (latestProject.current?.id !== projectId) return
+            commands.appendSources(projectId, result.sources)
+            if (result.failures.length) setError(result.failures.map(item => `${item.file.split(/[\\/]/).pop()}：${item.message}`).join('；'))
+        } catch (reason) { if (latestProject.current?.id === projectId) setError(reason.message) }
+        finally { setVideoImporting(false); setVideoProgress('') }
+    }, [project?.id, commands, videoImporting])
     const openProject = useCallback(async id => {
         try {
             const data = await mangaDeskBridge.openProject(id), nextSources = hydrateSources(data.images, data.project)
-            commands.load(data.project); setSources(nextSources); setSelectedSource(nextSources.find(source => source.sourceId === data.project.workspace.currentSourceId) || nextSources[0] || null); setView('workspace')
-        } catch (error) { setError(error instanceof Error ? error.message : '打开项目失败') }
+            commands.load(data.project);
+            setSources(nextSources);
+            setSelectedSource(nextSources.find(source => source.sourceId === data.project.workspace.currentSourceId) || nextSources[0] || null);
+            setView('workspace')
+        } catch (error) {
+            setError(error instanceof Error ? error.message : '打开项目失败')
+        }
     }, [commands])
     useEffect(() => () => releaseAllPdfDocuments(), [sources])
     useEffect(() => {
@@ -185,10 +216,10 @@ export default function App() {
         ArrowLeft: filteredSources.length ? () => chooseSource(filteredSources[Math.max(0, filteredSources.findIndex(source => source.path === selectedSource?.path) - 1)]) : null,
         ArrowRight: filteredSources.length ? () => chooseSource(filteredSources[Math.min(filteredSources.length - 1, filteredSources.findIndex(source => source.path === selectedSource?.path) + 1)]) : null
     }), [save, commands, selectedSource, cropDraft, selectedAssetId, currentBlock, toggleFavorite, filteredSources, openReader, chooseSource])
-    useShortcutScope({enabled: !readerOpen && view === 'workspace', bindings})
+    useShortcutScope({enabled: !readerOpen && view === 'workspace' && project?.workspace.activeMediaTab !== 'video', bindings})
     const readerKey = selectedSource?.pdfPath || 'images'
     return <div className="flex h-full min-h-0 flex-col bg-[#0f1219]">
-        <AppHeader project={project} saveStatus={{status: state.saveStatus, error: state.saveError}} view={view}
+        <AppHeader onMediaTab={activeMediaTab => commands.setVideoWorkspace({activeMediaTab})} project={project} saveStatus={{status: state.saveStatus, error: state.saveError}} view={view}
                    onViewChange={setView} onSave={save} onImport={importSource} onExport={() => setView('export')}
                    onAppendSource={appendSource}
                    onProjectCenter={() => setView('projects')}
@@ -196,26 +227,37 @@ export default function App() {
                    narrationMode={project?.narration?.mode || 'text'} onNarrationMode={commands.setNarrationMode}/>
         {(error || state.notice) && <div role="status"
                                          className="bg-slate-800 px-4 py-2 text-center text-sm text-slate-200">{error || state.notice}</div>}
-        {view === 'projects' ? <ProjectCenter onOpen={openProject} onClose={() => setView('workspace')}/> : !project ? <Welcome onImport={importSource}/> : view === 'export' ?
-            <ExportView project={project} revision={state.revision}
-                        onClose={() => setView('workspace')}/> : view === 'storyboard' ?
-                <StoryboardView project={project} revision={state.revision} sourcesById={sourcesById}
-                                restoreBlockId={storyReturnBlockId} onEditBlock={editStoryboardBlock}
-                                onOpenSource={sourceId => {
-                                    const source = sourcesById.get(sourceId);
-                                    if (source) openReader(source)
-                                }}/> :
-                <WorkspacePage project={project} sources={sources} filteredSources={filteredSources}
-                               sourcesById={sourcesById} selectedSource={selectedSource} search={search}
-                               onSearchChange={setSearch} onSelectSource={chooseSource} onOpenReader={openReader}
-                               browserView={browserView} onBrowserViewChange={setBrowserView} favoriteIds={favoriteIds}
-                               onToggleFavorite={toggleFavorite}
-                               onAddBasket={sourceId => commands.addBasketItem(sourceId)}
-                               onAddAsset={sourceId => commands.addAssetToCurrentBlock(sourceId)}
-                               usageIndex={usageIndex} onSelectReference={selectReference} onLocateAsset={locateAsset}
-                               selectedAssetId={selectedAssetId} onSelectAsset={setSelectedAssetId} block={currentBlock}
-                               blockIndex={currentBlockIndex} blocks={blocks} commands={commands}
-                               undoCount={state.undo.length} redoCount={state.redo.length}/>}
+        {view === 'projects' ? <ProjectCenter onOpen={openProject} onClose={() => setView('workspace')}/> : !project ?
+            <Welcome onImport={importSource}/> : view === 'export' ?
+                <ExportView project={project} revision={state.revision}
+                            onClose={() => setView('workspace')}/> : view === 'storyboard' ?
+                    <StoryboardView project={project} revision={state.revision} sourcesById={sourcesById}
+                                    restoreBlockId={storyReturnBlockId} onEditBlock={editStoryboardBlock}
+                                    onOpenSource={asset => {
+                        if (asset.type === 'video') {
+                            const target = project.blocks.find(block => block.assets.some(item => item.id === asset.id))
+                            if (target) commands.selectBlock(target.id)
+                            locateAsset(asset)
+                            return
+                        }
+                        const sourceId = asset.sourceId
+                                        const source = sourcesById.get(sourceId);
+                                        if (source) openReader(source)
+                                    }}/> :
+                    <WorkspacePage videoProps={{onImport: importVideo, importing: videoImporting, importProgress: videoProgress, located: locatedVideo}} project={project} sources={sources} filteredSources={filteredSources}
+                                   sourcesById={sourcesById} selectedSource={selectedSource} search={search}
+                                   onSearchChange={setSearch} onSelectSource={chooseSource} onOpenReader={openReader}
+                                   browserView={browserView} onBrowserViewChange={setBrowserView}
+                                   favoriteIds={favoriteIds}
+                                   onToggleFavorite={toggleFavorite}
+                                   onAddBasket={sourceId => commands.addBasketItem(sourceId)}
+                                   onAddAsset={sourceId => commands.addAssetToCurrentBlock(sourceId)}
+                                   usageIndex={usageIndex} onSelectReference={selectReference}
+                                   onLocateAsset={locateAsset}
+                                   selectedAssetId={selectedAssetId} onSelectAsset={setSelectedAssetId}
+                                   block={currentBlock}
+                                   blockIndex={currentBlockIndex} blocks={blocks} commands={commands}
+                                   undoCount={state.undo.length} redoCount={state.redo.length}/>}
         {readerOpen && selectedSource &&
             <ReaderDialog item={selectedSource} sources={sources} fitMode={readerPrefs[readerKey] || 'page'}
                           setFitMode={fitMode => setReaderPrefs(preferences => ({

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, clipboard, dialog, ipcMain, shell } = require('electron')
+const { app, BrowserWindow, clipboard, dialog, ipcMain, shell, protocol } = require('electron')
 const path = require('path')
 const { registerProjectIpc } = require('./electron/ipc/registerProjectIpc')
 const { registerSourceIpc } = require('./electron/ipc/registerSourceIpc')
@@ -11,6 +11,12 @@ const { VoiceRecordingService } = require('./electron/services/VoiceRecordingSer
 const { registerVoiceIpc } = require('./electron/ipc/registerVoiceIpc')
 const { AssistantWindowService } = require('./electron/services/AssistantWindowService')
 const { registerAssistantIpc } = require('./electron/ipc/registerAssistantIpc')
+
+const {VideoProbeService} = require('./electron/services/VideoProbeService')
+const {VideoPlaybackService} = require('./electron/services/VideoPlaybackService')
+const {VideoFrameService} = require('./electron/services/VideoFrameService')
+const {registerVideoIpc} = require('./electron/ipc/registerVideoIpc')
+protocol.registerSchemesAsPrivileged([{scheme: 'studio-video', privileges: {standard: true, secure: true, stream: true, supportFetchAPI: true}}])
 
 let mainWindow
 
@@ -28,6 +34,9 @@ let assistantWindowService
 
 app.whenReady().then(() => {
   const projectService = new ProjectService(app.getPath('userData'))
+  const playbackService = new VideoPlaybackService(projectService)
+  protocol.handle('studio-video', request => playbackService.respond(request))
+  registerVideoIpc({ipcMain, dialog, mainWindow: () => mainWindow, probeService: new VideoProbeService({packaged: app.isPackaged}), playbackService, frameService: new VideoFrameService({packaged: app.isPackaged})})
   const sourceScanService = new SourceScanService()
   const exportService = new ExportService(projectService)
   const voiceRecordingService = new VoiceRecordingService(projectService)

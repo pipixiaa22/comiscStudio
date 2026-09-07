@@ -15,6 +15,16 @@ contextBridge.exposeInMainWorld('mangaDesk', {
         ipcRenderer.on('export:progress', listener);
         return () => ipcRenderer.removeListener('export:progress', listener)
     },
+    video: {
+        choose: projectId => ipcRenderer.invoke('video:choose', projectId),
+        playback: input => ipcRenderer.invoke('video:playback', input),
+        resolveBoundary: input => ipcRenderer.invoke('video:resolveBoundary', input),
+        onProgress: callback => {
+            const listener = (_, payload) => callback(payload)
+            ipcRenderer.on('video:progress', listener)
+            return () => ipcRenderer.removeListener('video:progress', listener)
+        }
+    },
     voice: {
         start: input => ipcRenderer.invoke('voice:start', input),
         append: input => ipcRenderer.invoke('voice:append', input),

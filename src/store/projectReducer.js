@@ -89,6 +89,16 @@ export function projectReducer(state, action) {
         case 'WORKSPACE_BLOCK':
         case 'SELECT':
             return updateWorkspace(state, {currentBlockId: action.blockId || action.id})
+        case 'VIDEO_WORKSPACE': {
+            const patch = action.patch || {}
+            const workspace = {}
+            if (['image', 'video'].includes(patch.activeMediaTab)) workspace.activeMediaTab = patch.activeMediaTab
+            if (state.project.sources.some(source => source.id === patch.currentVideoSourceId && source.mediaType === 'video')) workspace.currentVideoSourceId = patch.currentVideoSourceId
+            if (Number.isSafeInteger(patch.positionUs) && patch.positionUs >= 0 && state.project.sources.some(source => source.id === patch.sourceId && patch.positionUs <= source.durationUs)) {
+                if (state.project.workspace.videoPositions?.[patch.sourceId] !== patch.positionUs) workspace.videoPositions = {...state.project.workspace.videoPositions, [patch.sourceId]: patch.positionUs}
+            }
+            return Object.keys(workspace).length ? updateWorkspace(state, workspace) : state
+        }
         case 'APPEND_SOURCES': {
             if (action.projectId !== state.project.id) return state
             const additions = prepareSourceAdditions(state.project.sources, action.sources, createId)

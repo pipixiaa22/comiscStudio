@@ -1,3 +1,4 @@
+import {VideoAssetSummary} from '../../video/components/VideoAssetSummary'
 import {useEffect, useMemo, useRef, useState} from 'react'
 import {AlertTriangle, RefreshCw} from 'lucide-react'
 import {Button} from '../../../components/ui/button'
@@ -67,9 +68,9 @@ export function StoryboardView({project, revision, sourcesById, restoreBlockId, 
                 <div
                     className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2">{block.assets.map((asset, assetIndex) =>
                     <button key={asset.id} className="overflow-hidden rounded border border-slate-700 text-left"
-                            onClick={() => onOpenSource(asset.sourceId)}><SourcePreview
-                        source={sourcesById.get(asset.sourceId)} crop={asset.crop} className="h-32 w-full"/><span
-                        className="block p-1 text-[10px] text-slate-400">{assetIndex + 1} · {asset.crop ? 'Crop' : '整页'}</span>
+                            onClick={() => onOpenSource(asset)}>{asset.type === 'video' ? <VideoAssetSummary asset={asset} source={sourcesById.get(asset.sourceId)}/> : <SourcePreview
+                        source={sourcesById.get(asset.sourceId)} crop={asset.crop} className="h-32 w-full"/>}<span
+                        className="block p-1 text-[10px] text-slate-400">{assetIndex + 1} · {asset.type === 'video' ? '视频' : asset.crop ? 'Crop' : '整页'}</span>
                     </button>)}</div>
                 {issues.length > 0 &&
                     <div className="mt-3 flex flex-wrap gap-2">{issues.map((issue, issueIndex) => <span

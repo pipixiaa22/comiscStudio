@@ -2,7 +2,7 @@ import { BookOpen, Download, FolderOpen, Save, PanelsTopLeft, Clapperboard, Plus
 import { Button } from '../components/ui/button'
 import { ProjectProgress } from '../features/project/components/ProjectProgress'
 
-export function AppHeader({ project, saveStatus, view, onViewChange, onSave, onImport, onAppendSource, onProjectCenter, onExport, onAssistant, narrationMode, onNarrationMode }) {
+export function AppHeader({ project, saveStatus, view, onViewChange, onSave, onImport, onAppendSource, onProjectCenter, onExport, onAssistant, narrationMode, onNarrationMode, onMediaTab }) {
   const status = { saved: '已保存', saving: '正在保存…', dirty: '有未保存修改', error: saveStatus.error || '保存失败' }[saveStatus.status]
   return <header className="flex h-14 shrink-0 items-center border-b border-slate-700 bg-[#151924] px-5">
     <div className="flex items-center gap-2 text-xl font-black"><BookOpen className="h-5 w-5 text-orange-400" />Manga<span className="text-orange-400">Desk</span></div>
@@ -10,6 +10,7 @@ export function AppHeader({ project, saveStatus, view, onViewChange, onSave, onI
     {project && <div className="ml-5 text-xs text-slate-500">{status}</div>}
     {project && <div className="ml-4 hidden xl:block"><ProjectProgress blocks={project.blocks} /></div>}
     {project && <label className="ml-4 hidden lg:flex items-center gap-2 text-xs text-slate-400">旁白<select value={narrationMode} onChange={event => onNarrationMode(event.target.value)} className="h-8 rounded border border-slate-600 bg-slate-900 px-2 text-slate-100"><option value="text">文字文案</option><option value="voice">真人录音</option></select></label>}
+    {project && <select aria-label="工作区" className="ml-3 rounded bg-slate-900 p-2 text-xs" value={project.workspace.activeMediaTab} onChange={event => onMediaTab(event.target.value)}><option value="image">漫画工作区</option><option value="video">动漫工作区</option></select>}
     <div className="ml-auto flex gap-2">
       <Button variant="secondary" size="sm" onClick={onProjectCenter}><Library className="h-4 w-4"/>项目</Button>
       {project && <Button variant={view === 'storyboard' ? 'default' : 'secondary'} size="sm" onClick={() => onViewChange(view === 'storyboard' ? 'workspace' : 'storyboard')}><PanelsTopLeft className="h-4 w-4" />{view === 'storyboard' ? '返回工作区' : 'Storyboard'}</Button>}

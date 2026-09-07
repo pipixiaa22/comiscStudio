@@ -1,3 +1,4 @@
+import {VideoAssetSummary} from '../../video/components/VideoAssetSummary'
 import {ChevronDown, ChevronUp, LocateFixed, Trash2} from 'lucide-react'
 import {Button} from '../../../components/ui/button'
 import {SourcePreview} from './SourcePreview'
@@ -18,13 +19,13 @@ export function BlockAssetList({assets, sourcesById, selectedAssetId, onSelect, 
                                            onDrop={event => drop(event, index)}
                                            className={`rounded border p-2 ${asset.id === selectedAssetId ? 'border-orange-400 bg-orange-400/10' : 'border-slate-700 bg-slate-950'}`}>
             <button className="w-full" onClick={() => onSelect(asset.id)} onDoubleClick={() => onLocate(asset)}>
-                <SourcePreview source={sourcesById.get(asset.sourceId)} crop={asset.crop}
-                               className="h-20 w-full rounded"/></button>
+                {asset.type === 'video' ? <VideoAssetSummary asset={asset} source={sourcesById.get(asset.sourceId)}/> : <SourcePreview source={sourcesById.get(asset.sourceId)} crop={asset.crop}
+                               className="h-20 w-full rounded"/>}</button>
             <div className="mt-1 flex items-center gap-1 text-[10px] text-slate-400">
-                <span>#{index + 1} · {asset.crop ? 'Crop' : '整页'}</span><Button className="ml-auto" size="sm"
+                <span>#{index + 1} · {asset.type === 'video' ? '视频' : asset.crop ? 'Crop' : '整页'}</span><Button className="ml-auto" size="sm"
                                                                                   variant="ghost"
                                                                                   onClick={() => onLocate(asset)}
-                                                                                  aria-label="定位原图"><LocateFixed
+                                                                                  aria-label="定位原素材"><LocateFixed
                 className="h-3 w-3"/></Button><Button size="sm" variant="ghost" disabled={!index}
                                                       onClick={() => onMove(asset.id, index - 1)}
                                                       aria-label="前移"><ChevronUp className="h-3 w-3"/></Button><Button

@@ -1,0 +1,88 @@
+// Run with Electron after building to VIDEO_SMOKE_BUILD and supplying VIDEO_TEST_SAMPLE.
+// Uses an isolated temporary profile and the actual main/preload/renderer bridge.
+const {app, BrowserWindow, dialog} = require('electron')
+const fs = require('node:fs/promises')
+const path = require('node:path')
+const os = require('node:os')
+const assert = require('node:assert/strict')
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
+const sample = process.env.VIDEO_TEST_SAMPLE
+const build = process.env.VIDEO_SMOKE_BUILD
+if (!sample || !build) throw new Error('VIDEO_TEST_SAMPLE and VIDEO_SMOKE_BUILD are required')
+const originalLoad = BrowserWindow.prototype.loadFile
+BrowserWindow.prototype.loadFile = function () { return originalLoad.call(this, path.join(build, 'index.html')) }
+dialog.showOpenDialog = async () => ({canceled: false, filePaths: [sample]})
+;(async () => {
+  const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'studio-electron-smoke-'))
+  app.setPath('userData', profile)
+  require('../main')
+  await app.whenReady()
+  await delay(800)
+  const window = BrowserWindow.getAllWindows()[0]
+  const js = script => window.webContents.executeJavaScript(script, true)
+  const until = async script => {
+    for (let i = 0; i < 100; i++) { if (await js(script)) return; await delay(100) }
+    throw new Error(`Timed out: ${script}\n${await js('document.body.innerText')}`)
+  }
+  const click = label => js(`Array.from(document.querySelectorAll('button')).find(button => button.textContent.trim() === ${JSON.stringify(label)})?.click()`)
+  await until('!!window.mangaDesk')
+  await js(`window.mangaDesk.createProject({name: '动漫选段验收', sources: []})`)
+  window.reload()
+  await delay(500)
+  await until(`!!document.querySelector('[aria-label="工作区"]')`)
+  await js(`(() => {const select = document.querySelector('[aria-label="工作区"]'); select.value = 'video'; select.dispatchEvent(new Event('change', {bubbles: true}))})()`)
+  await click('添加视频')
+  await until(`document.body.innerText.includes('可直接预览')`)
+  await js(`document.querySelector('video').currentTime = 0.5`)
+  await until(`!document.querySelector('video').seeking && !document.body.innerText.includes('定位中')`)
+  await click('标记 I')
+  await until(`!document.body.innerText.includes('I：—')`)
+  await js(`document.querySelector('video').currentTime = 2`)
+  await until(`!document.querySelector('video').seeking && !document.body.innerText.includes('定位中')`)
+  await click('标记 O')
+  await until(`!document.body.innerText.includes('O：—')`)
+  await click('加入当前段')
+  await until(`document.body.innerText.includes('已加入 #001')`)
+  await click('加入当前段')
+  await click('保存')
+  await delay(500)
+  const result = await js('window.mangaDesk.loadRecentProject()')
+  assert.equal(result.data.project.blocks[0].assets.length, 1)
+  const bound = result.data.project.blocks[0].assets[0]
+  // I/O are snapped to real frame boundaries: I at/below the raw mark, O strictly after it (right-open range).
+  assert.equal(bound.selectionBasis, 'frame')
+  assert.ok(bound.startUs <= 500000 && 500000 - bound.startUs <= 60000, `I snapped: ${bound.startUs}`)
+  assert.ok(bound.endUs > 2000000 && bound.endUs - 2000000 <= 60000, `O snapped: ${bound.endUs}`)
+  assert.equal(bound.audio.mode, 'mute')
+  await js(`document.querySelector('[aria-label="定位原素材"]').click()`)
+  await until(`document.body.innerText.includes('调整此片段')`)
+  // A located clip is a read-only highlight, not a draft: Enter must not duplicate it.
+  assert.equal(await js(`Array.from(document.querySelectorAll('button')).find(button => button.textContent.trim() === '加入当前段')?.disabled`), true)
+  await click('加入当前段')
+  assert.equal((await js('window.mangaDesk.loadRecentProject()')).data.project.blocks[0].assets.length, 1)
+  await click('调整此片段')
+  await until(`!document.querySelector('video').seeking`)
+  await js(`document.querySelector('video').currentTime = 1`)
+  await until(`!document.querySelector('video').seeking && !document.body.innerText.includes('定位中')`)
+  const beforeEdit = await js(`(document.body.innerText.match(/I：(\\d{2}:\\d{2}:\\d{2}\\.\\d{3})/) || [])[1]`)
+  await click('标记 I')
+  await until(`(document.body.innerText.match(/I：(\\d{2}:\\d{2}:\\d{2}\\.\\d{3})/) || [])[1] !== ${JSON.stringify(beforeEdit)}`)
+  await click('保存范围')
+  await until(`document.body.innerText.includes('片段范围已保存')`)
+  // Exercise the shared recording signal without requesting a real microphone.
+  await click('播放 / 暂停')
+  await js(`window.dispatchEvent(new CustomEvent('studio:recording', {detail: true}))`)
+  assert.equal(await js(`document.querySelector('video').paused && document.querySelector('video').muted`), true)
+  await js(`window.dispatchEvent(new CustomEvent('studio:recording', {detail: false}))`)
+  assert.equal(await js(`document.querySelector('video').paused`), true)
+  await click('保存'); await delay(500)
+  window.reload(); await delay(500)
+  await until(`document.body.innerText.includes('可直接预览')`)
+  const restored = await js('window.mangaDesk.loadRecentProject()')
+  const edited = restored.data.project.blocks[0].assets[0]
+  assert.ok(edited.startUs <= 1000000 && 1000000 - edited.startUs <= 60000, `edited I snapped: ${edited.startUs}`)
+  assert.equal(edited.id, result.data.project.blocks[0].assets[0].id)
+  await fs.writeFile(path.join(build, 'video-workspace.png'), (await window.webContents.capturePage()).toPNG())
+  console.log('Electron video smoke passed: import, decode, seek, bind, duplicate prevention, edit, recording guard, save/reopen')
+  app.exit(0)
+})().catch(error => { console.error(error); app.exit(1) })
