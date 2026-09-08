@@ -9,10 +9,24 @@ const {validateVideoAsset} = require('../../src/shared/domain/mediaAsset')
 const RENDER_VERSION = 'assistant-media-v2'
 const hash = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex')
 const cancelled = () => new Error('素材准备已取消')
+const contentVersions = new Map()
 
 function contentVersion(asset) {
-  return hash({type: asset.type || 'image', source: asset.source, crop: asset.crop || null,
-    startUs: asset.startUs, endUs: asset.endUs, videoStreamIndex: asset.videoStreamIndex, audio: asset.audio})
+  const source = asset.source || {}
+  // Source scan metadata can be very large. Delivery only depends on these
+  // fields, so cache a compact identity instead of serializing every source
+  // object for every assistant refresh.
+  const descriptor = {type: asset.type || 'image', sourceId: asset.sourceId, path: source.path,
+    pdfPath: source.pdfPath, pageNumber: source.pageNumber, mediaType: source.mediaType,
+    crop: asset.crop || null, startUs: asset.startUs, endUs: asset.endUs,
+    videoStreamIndex: asset.videoStreamIndex, audio: asset.audio}
+  const key = JSON.stringify(descriptor)
+  const cached = contentVersions.get(key)
+  if (cached) return cached
+  const version = hash(descriptor)
+  contentVersions.set(key, version)
+  if (contentVersions.size > 2048) contentVersions.delete(contentVersions.keys().next().value)
+  return version
 }
 
 class MediaDeliveryService {

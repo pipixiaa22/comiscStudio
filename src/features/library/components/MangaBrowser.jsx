@@ -1,4 +1,4 @@
-import {useEffect, useRef} from 'react'
+import {memo, useEffect, useMemo, useRef} from 'react'
 import {LayoutGrid, Maximize2, Search, ShoppingBasket, Star} from 'lucide-react'
 import {Button} from '../../../components/ui/button'
 import {ScrollAreaBox} from '../../../components/ui/scroll-area'
@@ -6,7 +6,7 @@ import {pageNumber} from '../../../shared/lib/pageNumber'
 import {PageMedia} from '../../reader/components/PageMedia'
 import {UsageBadge} from './UsageBadge'
 
-export function MangaBrowser({
+export const MangaBrowser = memo(function MangaBrowser({
                                  sources,
                                  allSources,
                                  selectedSource,
@@ -25,6 +25,7 @@ export function MangaBrowser({
                                  onSelectReference
                              }) {
     const selectedCard = useRef(null)
+    const sourceIndexes = useMemo(() => new Map(allSources.map((source, index) => [source.path, index])), [allSources])
     const documentPages = selectedSource?.kind === 'pdf-page' ? allSources.filter(source => source.pdfPath === selectedSource.pdfPath) : allSources
     const documentPage = Math.max(0, documentPages.findIndex(source => source.path === selectedSource?.path))
     useEffect(() => {
@@ -56,7 +57,7 @@ export function MangaBrowser({
                 {!sources.length &&
                     <p className="col-span-full py-10 text-center text-xs text-slate-500">{view === 'favorites' ? '看到想留用的画面，按 B 收藏' : '没有匹配页面'}</p>}
                 {sources.map(source => {
-                    const index = allSources.indexOf(source);
+                    const index = sourceIndexes.get(source.path) ?? 0;
                     const favorite = favoriteIds.has(source.sourceId);
                     return <div key={source.path} ref={selectedSource?.path === source.path ? selectedCard : null}
                                 className={`group relative rounded-lg border p-1.5 ${selectedSource?.path === source.path ? 'border-orange-400 bg-orange-400/10' : 'border-transparent bg-slate-800/70 hover:border-slate-600'}`}>
@@ -80,4 +81,4 @@ export function MangaBrowser({
             </div>
         </ScrollAreaBox>
     </aside>
-}
+})

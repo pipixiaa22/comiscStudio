@@ -8,6 +8,7 @@ function registerAssistantIpc({ipcMain, shell, clipboard, assistantWindowService
   const tokens = new Map(), requests = new Map(), watched = new Set()
   const validMain = event => mainWindow() && event.sender.id === mainWindow().webContents.id
   const validAssistant = event => assistantWindowService.isAssistant(event.sender)
+  const prepareSnapshot = next => ({...next, sessionId, sequence: ++sequence, blocks: next.blocks.map(block => ({...block, assets: block.assets.map(asset => ({...asset, deliveryVersion: contentVersion(asset)}))}))})
   const findAsset = (blockId, assetId) => snapshot?.blocks.find(block => block.id === blockId)?.assets.find(asset => asset.id === assetId)
   const current = item => item.sessionId === snapshot?.sessionId && item.projectId === snapshot?.projectId && contentVersion(findAsset(item.blockId, item.assetId) || {}) === item.version
   const validInput = (event, input) => {
@@ -19,13 +20,26 @@ function registerAssistantIpc({ipcMain, shell, clipboard, assistantWindowService
       sessionId: request.sessionId, revision: request.revision, blockId: request.blockId, assetId: request.assetId, version: request.version, ...state
     })
   }
-  ipcMain.handle('assistant:open', event => result(async () => { if (!validMain(event)) throw new Error('Unauthorized'); await assistantWindowService.open(); return true }))
+  ipcMain.handle('assistant:open', event => result(async () => {
+    if (!validMain(event)) throw new Error('Unauthorized')
+    await assistantWindowService.open()
+    // Publishing is intentionally cheap while closed.  Materialize delivery
+    // versions only when a window can actually consume them.
+    if (snapshot) {
+      snapshot = prepareSnapshot(snapshot)
+      assistantWindowService.send('assistant:snapshot', snapshot)
+    }
+    return true
+  }))
   ipcMain.handle('assistant:publish', (event, next) => result(() => {
     if (!validMain(event) || !next?.projectId) throw new Error('Unauthorized')
-    if (snapshot?.projectId !== next.projectId) { sessionId = crypto.randomUUID(); tokens.clear() }
-    snapshot = {...next, sessionId, sequence: ++sequence, blocks: next.blocks.map(block => ({...block, assets: block.assets.map(asset => ({...asset, deliveryVersion: contentVersion(asset)}))}))}
+    if (!snapshot || snapshot.projectId !== next.projectId) { sessionId = crypto.randomUUID(); tokens.clear() }
+    snapshot = assistantWindowService.window && !assistantWindowService.window.isDestroyed()
+      ? prepareSnapshot(next)
+      : {...next, sessionId, sequence: ++sequence}
     for (const [token, item] of tokens) if (!current(item)) tokens.delete(token)
     for (const request of requests.values()) if (!current(request)) stop(request)
+    // Do not serialize/send a large snapshot to a closed assistant window.
     assistantWindowService.send('assistant:snapshot', snapshot)
     return true
   }))

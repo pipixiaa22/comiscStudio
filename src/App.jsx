@@ -176,27 +176,33 @@ export default function App() {
     }, [currentBlock?.assets, selectedAssetId])
     useEffect(() => {
         if (!project || !window.mangaDesk?.assistant) return
-        const sources = new Map((project.sources || []).map(source => [source.id, source]))
-        const snapshot = {
-            projectId: project.id,
-            revision: state.revision,
-            projectName: project.name,
-            narrationMode: project.narration?.mode || 'text',
-            saveStatus: state.saveStatus,
-            blocks: blocks.map((block, index) => ({
-                id: block.id,
-                position: index + 1,
-                text: block.text,
-                status: block.status,
-                assets: (block.assets || []).map((asset, assetIndex) => ({
-                    ...asset,
-                    position: assetIndex + 1,
-                    source: sources.get(asset.sourceId)
+        // Text editing changes the project reference on every keystroke.  The
+        // assistant only needs the settled workspace state, so avoid flooding
+        // IPC with complete project snapshots while a user is typing.
+        const timer = setTimeout(() => {
+            const sources = new Map((project.sources || []).map(source => [source.id, source]))
+            const snapshot = {
+                projectId: project.id,
+                revision: state.revision,
+                projectName: project.name,
+                narrationMode: project.narration?.mode || 'text',
+                saveStatus: state.saveStatus,
+                blocks: blocks.map((block, index) => ({
+                    id: block.id,
+                    position: index + 1,
+                    text: block.text,
+                    status: block.status,
+                    assets: (block.assets || []).map((asset, assetIndex) => ({
+                        ...asset,
+                        position: assetIndex + 1,
+                        source: sources.get(asset.sourceId)
+                    }))
                 }))
-            }))
-        }
-        void mangaDeskBridge.assistant.publish(snapshot).catch(() => {
-        })
+            }
+            void mangaDeskBridge.assistant.publish(snapshot).catch(() => {
+            })
+        }, 350)
+        return () => clearTimeout(timer)
     }, [project, blocks, state.revision, state.saveStatus])
     useEffect(() => {
         if (!window.mangaDesk?.assistant) return

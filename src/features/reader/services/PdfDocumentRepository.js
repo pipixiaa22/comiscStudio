@@ -1,13 +1,30 @@
-import {getDocument, GlobalWorkerOptions} from 'pdfjs-dist'
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import {mangaDeskBridge} from '../../../shared/bridge/mangaDeskBridge'
 
-GlobalWorkerOptions.workerSrc = pdfWorker
 const documents = new Map()
+let pdfjsPromise
+
+function loadPdfjs() {
+    if (!pdfjsPromise) {
+        // PDF.js is only needed after a PDF is opened.  Loading it here keeps
+        // the normal image/video workspace out of the initial renderer chunk.
+        pdfjsPromise = Promise.all([
+            import('pdfjs-dist'),
+            import('pdfjs-dist/build/pdf.worker.min.mjs?url')
+        ]).then(([pdfjs, worker]) => {
+            pdfjs.GlobalWorkerOptions.workerSrc = worker.default
+            return pdfjs
+        }).catch(error => {
+            pdfjsPromise = null
+            throw error
+        })
+    }
+    return pdfjsPromise
+}
 
 export function getPdfDocument(file) {
     if (!documents.has(file)) {
-        const promise = mangaDeskBridge.readPdf(file).then(data => getDocument({data: data instanceof Uint8Array ? data : new Uint8Array(data)}).promise)
+        const promise = Promise.all([loadPdfjs(), mangaDeskBridge.readPdf(file)])
+            .then(([pdfjs, data]) => pdfjs.getDocument({data: data instanceof Uint8Array ? data : new Uint8Array(data)}).promise)
         documents.set(file, promise)
         promise.catch(() => documents.delete(file))
     }

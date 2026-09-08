@@ -1,12 +1,12 @@
 import {Check, ChevronDown, ChevronRight, Ellipsis, Image as ImageIcon, Merge, MoveDown, MoveUp, Plus, Search, Scissors, Trash2, Upload} from 'lucide-react'
-import {useEffect, useMemo, useRef, useState} from 'react'
+import {memo, useEffect, useMemo, useRef, useState} from 'react'
 import {Button} from '../../../components/ui/button'
 import {Card, CardContent} from '../../../components/ui/card'
 import {ScrollAreaBox} from '../../../components/ui/scroll-area'
 import {pageNumber, textSummary} from '../../../shared/lib/pageNumber'
 import {VoiceRecorderPanel} from '../../voice/components/VoiceRecorderPanel'
 
-export function BlockEditor({
+export const BlockEditor = memo(function BlockEditor({
                                 projectId,
                                 narrationMode,
                                 block,
@@ -86,8 +86,8 @@ export function BlockEditor({
             <span className="ml-auto text-xs text-slate-500">双击段落展开 / 收起</span><Button size="sm" variant="secondary" onClick={() => setImportOpen(true)}><Upload className="h-4 w-4"/>导入文稿</Button><Button size="sm" onClick={onAddBlock}><Plus className="h-4 w-4"/>新增段落</Button></div>
         {selected.size > 0 && <div className="flex items-center gap-2 border-b border-slate-700 bg-slate-900/70 px-5 py-2 text-xs"><span>已选 {selected.size} 段</span><Button size="sm" variant="secondary" onClick={() => runBulk('up')}><MoveUp className="h-3.5 w-3.5"/>上移</Button><Button size="sm" variant="secondary" onClick={() => runBulk('down')}><MoveDown className="h-3.5 w-3.5"/>下移</Button><Button size="sm" variant="secondary" onClick={() => runBulk('copy')}>复制</Button><Button size="sm" variant="secondary" onClick={() => runBulk('todo')}>标为待办</Button><Button size="sm" variant="ghost" className="text-red-300" onClick={() => runBulk('delete')}><Trash2 className="h-3.5 w-3.5"/>删除</Button><button className="ml-auto text-slate-400 hover:text-slate-100" onClick={() => setSelected(new Set())}>取消选择</button></div>}
         <ScrollAreaBox className="min-h-0 flex-1">
-            <div className="mx-auto max-w-2xl space-y-3 p-5">{blocks.filter(matches).map(entry => {
-                const index = blocks.indexOf(entry)
+            <div className="mx-auto max-w-2xl space-y-3 p-5">{blocks.filter(matches).map((entry, visibleIndex) => {
+                const index = query.trim() ? blocks.indexOf(entry) : visibleIndex
                 const expanded = open.has(entry.id);
                 return <Card key={entry.id}
                              className={entry.id === block?.id ? 'border-orange-400/40' : 'border-slate-700'}>
@@ -134,4 +134,4 @@ export function BlockEditor({
             </CardContent></Card>
         </div>}
     </section>
-}
+})

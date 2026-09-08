@@ -50,7 +50,6 @@ function updateText(state, action) {
     blocks[blockIndex] = {
         ...oldBlock,
         text: action.text,
-        status: {...oldBlock.status, scriptDone: false},
         updatedAt: timestamp
     }
     return {

@@ -1,3 +1,4 @@
+import {memo} from 'react'
 import {CircleCheck, ImageOff, MicOff, Redo2, TextCursorInput, Undo2} from 'lucide-react'
 import {Button} from '../../../components/ui/button'
 import {Card, CardContent} from '../../../components/ui/card'
@@ -7,7 +8,7 @@ import {BlockAssetList} from '../../assets/components/BlockAssetList'
 
 const statuses = [['scriptDone', '文案'], ['assetDone', '素材'], ['voiced', '配音'], ['edited', '剪辑'], ['effectDone', '特效']]
 
-export function BlockStatusPanel({
+export const BlockStatusPanel = memo(function BlockStatusPanel({
                                      projectId,
                                      narrationMode,
                                      block,
@@ -58,4 +59,4 @@ export function BlockStatusPanel({
                        onMove={commands.reorderBasket} onClear={commands.clearBasket}/>
         <Card className="mt-6 border-slate-700 bg-slate-900/40"><CardContent className="space-y-3 py-4"><div><h3 className="text-sm font-semibold">下一待办</h3><p className="mt-1 text-xs text-slate-400">{missing.length ? `前往下一处待处理的${todoLabel}` : '当前段已完成，可继续检查后续段落。'}</p></div><Button className="w-full" onClick={() => commands.selectNextTodo(nextTodo)}><CircleCheck className="h-4 w-4"/>{missing.length ? `前往下一待办：${todoLabel}` : '查看下一段'}</Button><div className="flex gap-1"><Button size="sm" variant="ghost" className="flex-1" onClick={() => commands.selectNextTodo('text')} title="下一未写文案"><TextCursorInput className="h-3.5 w-3.5"/>文案</Button><Button size="sm" variant="ghost" className="flex-1" onClick={() => commands.selectNextTodo('assets')} title="下一未配图"><ImageOff className="h-3.5 w-3.5"/>配图</Button>{narrationMode === 'voice' && <Button size="sm" variant="ghost" className="flex-1" onClick={() => commands.selectNextTodo('voice')} title="下一待录音"><MicOff className="h-3.5 w-3.5"/>录音</Button>}</div></CardContent></Card>
     </aside>
-}
+})

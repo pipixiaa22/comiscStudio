@@ -2,7 +2,7 @@ const fs = require('fs/promises')
 const path = require('path')
 const crypto = require('crypto')
 const {createExportPlan, validatePackageName, sourceFile} = require('./ExportPlanner')
-const {renderAsset} = require('./AssetRenderer')
+const {renderAsset, releasePdfDocuments} = require('./AssetRenderer')
 const {writeScript, writeSubtitles, writeStoryboard} = require('./ExportWriters')
 const {validateNarration, writeNarration} = require('./NarrationExportService')
 
@@ -237,6 +237,10 @@ class ExportService {
             if (temporary) await fs.rm(temporary, {recursive: true, force: true}).catch(() => {
             })
             emit({stage: job.status, completed: 0, total: 0, error: job.error})
+        } finally {
+            // PDF.js documents are reused within this job and released once its
+            // rendering work has finished, keeping long-lived main-process RAM bounded.
+            await releasePdfDocuments()
         }
     }
 

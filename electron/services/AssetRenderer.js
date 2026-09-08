@@ -4,6 +4,11 @@ const sharp = require('sharp')
 const { createCanvas } = require('@napi-rs/canvas')
 const { sourceFile, sourcePage } = require('./ExportPlanner')
 
+// A PDF commonly supplies many assets in one export.  Keep parsed documents by
+// file fingerprint so pages share the expensive read/parse work, while a file
+// replacement is still detected before it can be reused.
+const pdfDocuments = new Map()
+
 async function fingerprint(file) { const stat = await fs.stat(file); return { size: stat.size, mtimeMs: stat.mtimeMs } }
 function sameFingerprint(left, right) { return left.size === right.size && left.mtimeMs === right.mtimeMs }
 function exportCanvas(options) {
@@ -91,17 +96,33 @@ async function renderAsset(asset, output, options) {
 }
 
 async function renderPdfPage(file, pageNumber, dpi) {
-  const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs')
-  const loadingTask = getDocument({ data: new Uint8Array(await fs.readFile(file)), disableWorker: true })
-  const document = await loadingTask.promise
-  try {
-    if (pageNumber < 1 || pageNumber > document.numPages) throw new Error('PDF 页面不存在')
-    const page = await document.getPage(pageNumber)
-    const viewport = page.getViewport({ scale: dpi / 72 })
-    const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height))
-    await page.render({ canvas, canvasContext: canvas.getContext('2d'), viewport }).promise
-    return canvas.toBuffer('image/png')
-  } finally { await loadingTask.destroy() }
+  const stat = await fingerprint(file)
+  const cached = pdfDocuments.get(file)
+  if (cached && !sameFingerprint(cached.fingerprint, stat)) {
+    pdfDocuments.delete(file)
+    await cached.loadingTask.destroy().catch(() => {})
+  }
+  let entry = pdfDocuments.get(file)
+  if (!entry) {
+    const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs')
+    const loadingTask = getDocument({ data: new Uint8Array(await fs.readFile(file)), disableWorker: true })
+    entry = {fingerprint: stat, loadingTask, document: loadingTask.promise}
+    pdfDocuments.set(file, entry)
+  }
+  const document = await entry.document
+  if (pageNumber < 1 || pageNumber > document.numPages) throw new Error('PDF 页面不存在')
+  const page = await document.getPage(pageNumber)
+  const viewport = page.getViewport({ scale: dpi / 72 })
+  const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height))
+  await page.render({ canvas, canvasContext: canvas.getContext('2d'), viewport }).promise
+  page.cleanup()
+  return canvas.toBuffer('image/png')
 }
 
-module.exports = { renderAsset }
+async function releasePdfDocuments() {
+  const entries = [...pdfDocuments.values()]
+  pdfDocuments.clear()
+  await Promise.allSettled(entries.map(entry => entry.loadingTask.destroy()))
+}
+
+module.exports = { renderAsset, releasePdfDocuments }

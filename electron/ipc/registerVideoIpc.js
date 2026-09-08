@@ -10,7 +10,9 @@ function registerVideoIpc({ipcMain, dialog, mainWindow, probeService, playbackSe
     if (typeof projectId !== 'string' || !projectId || importing) throw new Error('视频导入正在进行或项目无效')
     importing = true
     try {
-      const selection = await dialog.showOpenDialog(mainWindow(), {properties: ['openFile', 'multiSelections'], filters: [{name: '视频', extensions: ['mp4', 'm4v', 'mov', 'mkv', 'webm']}]})
+      // Keep the chooser aligned with the direct-preview pipeline. Unsupported
+      // containers/codecs are not silently imported as unusable sources.
+      const selection = await dialog.showOpenDialog(mainWindow(), {properties: ['openFile', 'multiSelections'], filters: [{name: '兼容视频（H.264）', extensions: ['mp4', 'm4v', 'mov']}]})
       const sources = [], failures = []
       if (selection.canceled) return {sources, failures}
       const files = [...new Set(selection.filePaths)].sort((a, b) => a.localeCompare(b, undefined, {numeric: true}))
