@@ -4,9 +4,12 @@
 		"start": "vite build && electron .",
 		"dev": "vite",
 		"build": "vite build",
-		"test": "node --test tests/*.test.cjs"
+		"test": "node --test tests/*.test.cjs",
+		"package:check": "node scripts/package-app.cjs --check",
+		"package:app": "node scripts/package-app.cjs"
 	},
 	"devDependencies": {
+		"@electron/packager": "^20.3.0",
 		"@vitejs/plugin-react": "^6.1.1",
 		"autoprefixer": "^10.5.4",
 		"concurrently": "^10.0.5",

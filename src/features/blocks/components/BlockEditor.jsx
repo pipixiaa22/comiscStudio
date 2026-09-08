@@ -39,6 +39,8 @@ export function BlockEditor({
     const [separator, setSeparator] = useState('blank')
     const [blockMenuOpen, setBlockMenuOpen] = useState(false)
     const fileRef = useRef(null)
+    // 每段的 textarea 元素，按钮直接读它自己的 selectionStart，避免取到别的段落的光标。
+    const textareas = useRef(new Map())
     useEffect(() => {
         if (block?.id) setOpen(value => new Set([...value, block.id]))
     }, [block?.id])
@@ -99,13 +101,15 @@ export function BlockEditor({
                     {expanded && <CardContent><textarea value={entry.text}
                                                         onChange={event => onChangeText(entry.id, event.target.value)}
                                                         onKeyDown={event => { if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key === 'Enter') { event.preventDefault(); onSplitBlock(entry.id, event.currentTarget.selectionStart) } }}
+                                                        ref={element => { if (element) textareas.current.set(entry.id, element); else textareas.current.delete(entry.id) }}
                                                         onBlur={onBlurText} placeholder="在这里写这一段解说…"
                                                         className="min-h-40 w-full resize-y rounded-lg border border-slate-700 bg-slate-950 p-4 text-[15px] leading-7 outline-none focus:border-orange-400"/>
                         <div className={`mt-4 flex items-center text-xs text-slate-500 ${entry.id === block?.id ? 'sticky bottom-0 -mx-4 border-t border-slate-700 bg-slate-800/95 px-4 py-3 backdrop-blur' : ''}`}>
                             <span>{entry.text.length} 字 · Ctrl/Cmd+Shift+Enter 拆分</span>
                             <Button size="sm" variant="ghost" className="ml-2" disabled={!entry.text || Boolean(entry.voice?.takes?.length)} onClick={() => {
-                                const textarea = document.activeElement?.tagName === 'TEXTAREA' ? document.activeElement : null
-                                onSplitBlock(entry.id, textarea?.selectionStart ?? Math.floor(entry.text.length / 2))
+                                // 读该段自己 textarea 的当前光标；没放过光标（0）时从中间拆。
+                                const caret = textareas.current.get(entry.id)?.selectionStart || 0
+                                onSplitBlock(entry.id, caret > 0 ? caret : Math.floor(entry.text.length / 2))
                             }}><Scissors className="h-3.5 w-3.5"/>拆分</Button><Button size="sm" variant="ghost" disabled={index === blocks.length - 1 || Boolean(entry.voice?.takes?.length) || Boolean(blocks[index + 1]?.voice?.takes?.length)} onClick={() => onMergeWithNext(entry.id)}><Merge className="h-3.5 w-3.5"/>合并下一段</Button>
                             <div className="ml-auto flex gap-2">{entry.id !== block?.id && <Button size="sm" variant="secondary"
                                                                         onClick={() => complete(entry.id)}><Check

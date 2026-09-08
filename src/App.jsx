@@ -205,6 +205,18 @@ export default function App() {
             if (command?.type === 'locateBlock') commands.selectBlock(command.blockId)
         })
     }, [commands])
+    // 撤销/重做在所有视图都可用；输入框内保留浏览器原生撤销，不吞掉正在编辑的文本。
+    useEffect(() => {
+        const onKeyDown = event => {
+            if (!(event.metaKey || event.ctrlKey) || event.altKey || event.isComposing) return
+            if (event.target?.closest?.('input, textarea, select, [contenteditable="true"]')) return
+            const key = event.key.toLowerCase()
+            if (key === 'z' && !event.shiftKey) { event.preventDefault(); commands.undo() }
+            else if ((key === 'z' && event.shiftKey) || key === 'y') { event.preventDefault(); commands.redo() }
+        }
+        window.addEventListener('keydown', onKeyDown)
+        return () => window.removeEventListener('keydown', onKeyDown)
+    }, [commands])
     const bindings = useMemo(() => ({
         'Ctrl+s': save,
         'Ctrl+Enter': commands.completeCurrentBlock,

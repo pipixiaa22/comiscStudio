@@ -1,1 +1,5 @@
 node_modules
+release/
+resources/**/media-tools/ffmpeg
+resources/**/media-tools/ffprobe
+resources/**/media-tools/*.exe

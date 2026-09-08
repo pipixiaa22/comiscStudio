@@ -7,7 +7,10 @@ export function CapCutAssistant() {
     const [snapshot, setSnapshot] = useState(null), [blockId, setBlockId] = useState(null), [topmost, setTopmost] = useState(true), [notice, setNotice] = useState('')
     useEffect(() => {
         const off = mangaDeskBridge.assistant.onSnapshot(next => {
-            setSnapshot(next);
+            setSnapshot(current => ({...next, blocks: next.blocks.map(block => ({...block, assets: block.assets.map(asset => {
+                const previous = current?.sessionId === next.sessionId && current.blocks.find(entry => entry.id === block.id)?.assets.find(entry => entry.id === asset.id)
+                return previous?.deliveryVersion === asset.deliveryVersion ? {...asset, delivery: previous.delivery, preparation: previous.preparation} : asset
+            })}))}));
             setBlockId(current => next.blocks.some(block => block.id === current) ? current : next.blocks[0]?.id || null)
         });
         void mangaDeskBridge.assistant.snapshot().then(next => {
@@ -17,7 +20,16 @@ export function CapCutAssistant() {
             }
         }).catch(() => {
         });
-        return off
+        const offState = mangaDeskBridge.assistant.onAssetState(event => {
+            setSnapshot(current => {
+                if (current?.sessionId !== event.sessionId) return current
+                return {...current, blocks: current.blocks.map(block => block.id !== event.blockId ? block : {...block,
+                    assets: block.assets.map(asset => asset.id !== event.assetId || asset.deliveryVersion !== event.version ? asset : {
+                        ...asset, preparation: event, delivery: event.state === 'ready' ? event.delivery : undefined
+                    })})}
+            })
+        })
+        return () => { off(); offState() }
     }, [])
     const index = useMemo(() => snapshot?.blocks.findIndex(block => block.id === blockId) ?? -1, [snapshot, blockId]),
         block = snapshot?.blocks[index]
@@ -45,6 +57,11 @@ export function CapCutAssistant() {
         }
     }
     const prepare = async asset => {
+        const sessionId = snapshot.sessionId, targetBlockId = blockId, version = asset.deliveryVersion
+        const update = patch => setSnapshot(current => current?.sessionId !== sessionId ? current : ({...current,
+            blocks: current.blocks.map(block => block.id !== targetBlockId ? block : {...block,
+                assets: block.assets.map(entry => entry.id === asset.id && entry.deliveryVersion === version ? {...entry, ...patch} : entry)})}))
+        update({preparation: {state: 'queued', progress: 0}, delivery: undefined})
         try {
             const item = await mangaDeskBridge.assistant.prepare({
                 sessionId: snapshot.sessionId,
@@ -52,19 +69,15 @@ export function CapCutAssistant() {
                 blockId,
                 assetId: asset.id
             });
-            setSnapshot(current => ({
-                ...current,
-                blocks: current.blocks.map(entry => entry.id === blockId ? {
-                    ...entry,
-                    assets: entry.assets.map(candidate => candidate.id === asset.id ? {
-                        ...candidate,
-                        delivery: item
-                    } : candidate)
-                } : entry)
-            }))
+            update({delivery: item, preparation: {state: 'ready'}})
         } catch (error) {
-            setNotice(error.message)
+            update({delivery: undefined, preparation: {state: 'failed', error: error.message}})
         }
+    }
+    const cancel = async asset => {
+        try {
+            await mangaDeskBridge.assistant.cancelPrepare({sessionId: snapshot.sessionId, revision: snapshot.revision, blockId, assetId: asset.id})
+        } catch (error) { setNotice(error.message) }
     }
     useEffect(() => {
         const keydown = event => {
@@ -106,11 +119,15 @@ export function CapCutAssistant() {
                     }}><Play className="h-3 w-3"/>拖入剪映</Button><Button size="sm" variant="ghost"
                                                                            onClick={() => mangaDeskBridge.assistant.openAssetDirectory(asset.delivery.token)}><ExternalLink
                     className="h-3 w-3"/></Button></> : <Button className="ml-auto" size="sm" variant="secondary"
-                                                                onClick={() => prepare(asset)}>准备素材</Button>}</div>
+                                                                disabled={['queued', 'rendering'].includes(asset.preparation?.state)}
+                                                                onClick={() => prepare(asset)}>{asset.preparation?.state === 'failed' ? '重试' : '准备素材'}</Button>}</div>
+                {asset.type === 'video' && <p className="mt-2 text-xs text-slate-400">视频 · {(asset.startUs / 1000000).toFixed(3)}–{(asset.endUs / 1000000).toFixed(3)} 秒 · 时长 {((asset.endUs - asset.startUs) / 1000000).toFixed(3)} 秒 · 交付：{asset.audio?.mode === 'keep' ? '保留原声' : '静音'}</p>}
+                {['queued', 'rendering'].includes(asset.preparation?.state) && <div className="mt-2 flex items-center gap-2 text-xs text-slate-400"><span>{asset.preparation.state === 'queued' ? '等待准备…' : `准备中 ${Math.round((asset.preparation.progress || 0) * 100)}%`}</span><Button size="sm" variant="ghost" onClick={() => cancel(asset)}>取消</Button></div>}
+                {asset.preparation?.error && <p role="alert" className="mt-2 text-xs text-amber-300">{asset.preparation.error}</p>}
             </div>)}</div>
         </section>
         <section
-            className="mt-3 grid grid-cols-3 gap-2 text-xs">{[['voiced', '配音'], ['edited', '放图'], ['effectDone', '动效']].map(([key, label]) =>
+            className="mt-3 grid grid-cols-3 gap-2 text-xs">{[['voiced', '配音'], ['edited', '放画面'], ['effectDone', '动效']].map(([key, label]) =>
             <label key={key} className="flex items-center gap-1"><input type="checkbox"
                                                                         disabled={snapshot.narrationMode === 'voice' && key === 'voiced'}
                                                                         checked={Boolean(block.status?.[key])}
@@ -122,5 +139,6 @@ export function CapCutAssistant() {
                                                         disabled={index >= snapshot.blocks.length - 1}
                                                         onClick={() => setBlockId(snapshot.blocks[index + 1].id)}>下一段<ChevronRight
             className="h-4 w-4"/></Button></footer>
+        <p className="mt-2 text-xs text-slate-500">准备好后再次拖入剪映，也可打开目录手动导入。交付文件会永久保留；拖动不会自动勾选“放画面”。</p>
         {notice && <p className="mt-2 text-xs text-amber-300">{notice}</p>}</main>
 }

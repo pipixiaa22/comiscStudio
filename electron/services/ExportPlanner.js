@@ -29,6 +29,7 @@ function hasContinuousOrders(items) {
 }
 function validateOptions(options = {}) {
   const errors = []
+  if (options.watermarkText != null && (typeof options.watermarkText !== 'string' || options.watermarkText.length > 100)) errors.push({ code: 'INVALID_WATERMARK_TEXT', message: '水印文本必须是 100 字以内的文字' })
   if (options.format != null && !['jpeg', 'png'].includes(options.format)) errors.push({ code: 'INVALID_FORMAT', message: 'Unsupported export image format' })
   if (options.jpegQuality != null && (!Number.isInteger(options.jpegQuality) || options.jpegQuality < 1 || options.jpegQuality > 100)) errors.push({ code: 'INVALID_JPEG_QUALITY', message: 'JPEG quality must be between 1 and 100' })
   if (options.pdfDpi != null && ![150, 200, 300].includes(options.pdfDpi)) errors.push({ code: 'INVALID_PDF_DPI', message: 'PDF DPI must be 150, 200, or 300' })

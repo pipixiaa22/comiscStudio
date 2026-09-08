@@ -64,6 +64,7 @@ export const mangaDeskBridge = {
         copy: async input => unwrap(await bridge().assistant.copy(input)),
         command: async input => unwrap(await bridge().assistant.command(input)),
         prepare: async input => unwrap(await bridge().assistant.prepare(input)),
+        cancelPrepare: async input => unwrap(await bridge().assistant.cancelPrepare(input)),
         startDrag: token => bridge().assistant.startDrag(token),
         openAssetDirectory: async token => unwrap(await bridge().assistant.openAssetDirectory(token)),
         onSnapshot: callback => bridge().assistant.onSnapshot(callback),

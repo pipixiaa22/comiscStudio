@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useState} from 'react'
+import {useEffect, useMemo, useRef, useState} from 'react'
 import {FolderOpen, Play, Save, Trash2, X} from 'lucide-react'
 import {Button} from '../../../components/ui/button'
 import {mangaDeskBridge} from '../../../shared/bridge/mangaDeskBridge'
@@ -16,7 +16,8 @@ export function ExportView({project, revision, onClose, onSavePreset, onRemovePr
         maxEdge: '',
         canvasWidth: 1920,
         canvasHeight: 1080,
-        backgroundColor: '#F4EBD9'
+        backgroundColor: '#F4EBD9',
+        watermarkText: ''
     })
     const [preflight, setPreflight] = useState(null)
     const [confirmedWarnings, setConfirmedWarnings] = useState(false)
@@ -24,6 +25,9 @@ export function ExportView({project, revision, onClose, onSavePreset, onRemovePr
     const [presetName, setPresetName] = useState('')
     const [baselineId, setBaselineId] = useState('')
     const [progress, setProgress] = useState({stage: 'idle', completed: 0, total: 0})
+    // 交付基线必须在点击导出时固定，之后写稿不能混入本次产物。
+    const [baseline, setBaseline] = useState(null)
+    const recordedJob = useRef(null)
     const input = useMemo(() => ({
         projectSnapshot: project,
         options: {
@@ -49,6 +53,7 @@ export function ExportView({project, revision, onClose, onSavePreset, onRemovePr
         const report = await mangaDeskBridge.preflightExport(input)
         setPreflight(report)
         if (report.errors.length || (report.warnings.length && !confirmedWarnings)) return
+        setBaseline({revision, options: input.options, blocks: project.blocks.map(block => ({id: block.id, fingerprint: fingerprint(block)}))})
         const result = await mangaDeskBridge.startExport({...input, projectRevision: revision})
         setJob(result.jobId);
         setProgress({stage: 'validating', completed: 0, total: report.assetCount})
@@ -57,9 +62,11 @@ export function ExportView({project, revision, onClose, onSavePreset, onRemovePr
         if (event.jobId === job) setProgress(event)
     }), [job])
     useEffect(() => {
-        if (progress.stage !== 'succeeded' || !progress.output || !onRecordDelivery) return
-        onRecordDelivery({id: createId(), createdAt: Date.now(), revision, output: progress.output, options: input.options, blocks: project.blocks.map(block => ({id: block.id, fingerprint: fingerprint(block)}))})
-    }, [progress.stage, progress.output])
+        if (progress.stage !== 'succeeded' || !progress.output || !job || !baseline || !onRecordDelivery) return
+        if (recordedJob.current === job) return
+        recordedJob.current = job
+        onRecordDelivery({id: createId(), createdAt: Date.now(), revision: baseline.revision, output: progress.output, options: baseline.options, blocks: baseline.blocks})
+    }, [progress.stage, progress.output, job, baseline, onRecordDelivery])
     const running = ['validating', 'rendering', 'writingDocuments', 'finalizing'].includes(progress.stage)
     const completed = progress.stage === 'succeeded'
     return <main className="min-h-0 flex-1 overflow-auto bg-[#0d1118] p-6">
@@ -154,6 +161,16 @@ export function ExportView({project, revision, onClose, onSavePreset, onRemovePr
                             </div>
                         </div>
                     </div>
+                    <label className="mt-3 block text-sm">水印文本（可选）<input
+                        value={options.watermarkText || ''} maxLength={100} disabled={running || completed}
+                        placeholder="输入自定义文字，留空不添加水印"
+                        onChange={event => {
+                            setOptions(value => ({...value, watermarkText: event.target.value}))
+                            setPreflight(null)
+                        }}
+                        className="mt-1 h-9 w-full rounded border border-slate-600 bg-slate-950 px-2"/>
+                    </label>
+                    <p className="mt-1 text-xs text-slate-400">水印以淡色斜向平铺，仅显示在图片周围的底图区域；图片铺满画布时不会显示水印。最多 100 字。</p>
                 </section>
             </div>
             <section className="mt-4 rounded border border-slate-700 bg-slate-900/40 p-3"><div className="flex flex-wrap items-center gap-2"><b className="text-sm">导出预设</b><select className="h-8 rounded border border-slate-600 bg-slate-950 px-2 text-xs" defaultValue="" onChange={event => { const preset = project.exportPresets?.find(item => item.id === event.target.value); if (preset) setOptions(value => ({...value, ...preset.options})) }}><option value="">选择预设…</option>{(project.exportPresets || []).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select><input value={presetName} onChange={event => setPresetName(event.target.value)} placeholder="预设名称" className="h-8 w-28 rounded border border-slate-600 bg-slate-950 px-2 text-xs"/><Button size="sm" variant="secondary" onClick={() => { onSavePreset(presetName, options); setPresetName('') }}><Save className="h-3.5 w-3.5"/>保存</Button>{(project.exportPresets || []).length > 0 && <Button size="sm" variant="ghost" className="text-slate-400" onClick={() => { const item = project.exportPresets.at(-1); if (item) onRemovePreset(item.id) }}><Trash2 className="h-3.5 w-3.5"/>删除最近</Button>}</div><p className="mt-2 text-xs text-slate-400">预设只保存导出参数，不保存素材或输出目录。</p></section>

@@ -14,6 +14,32 @@ function exportCanvas(options) {
   }
 }
 
+function watermarkBackground(canvas, text, content) {
+  const surface = createCanvas(canvas.width, canvas.height)
+  const context = surface.getContext('2d')
+  const rgb = canvas.background.slice(1).match(/../g).map(value => parseInt(value, 16))
+  context.fillStyle = rgb[0] * 0.299 + rgb[1] * 0.587 + rgb[2] * 0.114 > 140 ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.18)'
+  const fontSize = Math.max(12, Math.round(Math.min(canvas.width, canvas.height) / 36))
+  context.font = `${fontSize}px sans-serif`
+  context.textAlign = 'center'
+  context.textBaseline = 'middle'
+  const textWidth = Math.min(context.measureText(text).width, fontSize * 12)
+  const stepX = Math.max(fontSize * 5, textWidth + fontSize * 3)
+  const stepY = fontSize * 5
+  for (let row = 0, y = 0; y < canvas.height + stepY; row++, y += stepY) {
+    for (let x = row % 2 ? 0 : stepX / 2; x < canvas.width + stepX; x += stepX) {
+      context.save()
+      context.translate(x, y)
+      context.rotate(-Math.PI / 6)
+      context.fillText(text, 0, 0, fontSize * 12)
+      context.restore()
+    }
+  }
+  // Exclude the complete source rectangle, including any transparent pixels.
+  context.clearRect(content.left, content.top, content.width, content.height)
+  return surface.toBuffer('image/png')
+}
+
 async function renderAsset(asset, output, options) {
   const file = sourceFile(asset.source)
   const before = await fingerprint(file)
@@ -45,7 +71,17 @@ async function renderAsset(asset, output, options) {
     return { width: result.width, height: result.height, canvas: null }
   }
   const canvas = exportCanvas(options)
-  image = image.resize({ width: canvas.width, height: canvas.height, fit: 'contain', background: canvas.background, withoutEnlargement: true })
+  const watermarkText = typeof options.watermarkText === 'string' ? options.watermarkText.trim() : ''
+  if (watermarkText) {
+    const content = await image.resize({ width: canvas.width, height: canvas.height, fit: 'inside', withoutEnlargement: true })
+      .png().toBuffer({ resolveWithObject: true })
+    const left = Math.floor((canvas.width - content.info.width) / 2)
+    const top = Math.floor((canvas.height - content.info.height) / 2)
+    image = sharp(content.data).extend({left, top, right: canvas.width - content.info.width - left, bottom: canvas.height - content.info.height - top, background: canvas.background})
+      .composite([{input: watermarkBackground(canvas, watermarkText, {left, top, width: content.info.width, height: content.info.height})}])
+  } else {
+    image = image.resize({ width: canvas.width, height: canvas.height, fit: 'contain', background: canvas.background, withoutEnlargement: true })
+  }
   if (options.format === 'png') image = image.png()
   else image = image.flatten({ background: '#ffffff' }).jpeg({ quality: Math.max(1, Math.min(100, options.jpegQuality || 92)) })
   const result = await image.toFile(output)

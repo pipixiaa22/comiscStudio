@@ -186,6 +186,7 @@ class ExportService {
                         jpegQuality: input.options.jpegQuality || 92,
                         pdfDpi: input.options.pdfDpi || 200,
                         maxEdge: input.options.maxEdge || null,
+                        watermarkText: input.options.watermarkText?.trim() || '',
                         canvas: {
                             width: input.options.canvasWidth || 1920,
                             height: input.options.canvasHeight || 1080,

@@ -17,6 +17,8 @@ const {VideoPlaybackService} = require('./electron/services/VideoPlaybackService
 const {VideoFrameService} = require('./electron/services/VideoFrameService')
 const {VideoRenderService} = require('./electron/services/VideoRenderService')
 const {registerVideoIpc} = require('./electron/ipc/registerVideoIpc')
+const {MediaDeliveryService} = require('./electron/services/MediaDeliveryService')
+const {checkMediaToolchain} = require('./electron/services/MediaToolchainService')
 protocol.registerSchemesAsPrivileged([{scheme: 'studio-video', privileges: {standard: true, secure: true, stream: true, supportFetchAPI: true}}])
 
 let mainWindow
@@ -32,6 +34,14 @@ function createMainWindow() {
   return window
 }
 let assistantWindowService
+let assistantIpc, quitting = false
+
+app.on('before-quit', event => {
+  if (!assistantIpc || quitting) return
+  event.preventDefault()
+  quitting = true
+  void assistantIpc.shutdown().finally(() => app.quit())
+})
 
 app.whenReady().then(() => {
   const projectService = new ProjectService(app.getPath('userData'))
@@ -47,8 +57,14 @@ app.whenReady().then(() => {
   registerSystemIpc({ ipcMain, clipboard })
   registerExportIpc({ ipcMain, dialog, shell, exportService })
   registerVoiceIpc({ ipcMain, voiceRecordingService })
-  registerAssistantIpc({ ipcMain, shell, clipboard, assistantWindowService, projectService, mainWindow: () => mainWindow })
+  assistantIpc = registerAssistantIpc({ ipcMain, shell, clipboard, assistantWindowService, projectService, mainWindow: () => mainWindow,
+    deliveryService: new MediaDeliveryService(projectService, new VideoRenderService({packaged: app.isPackaged})) })
   createMainWindow()
+  void checkMediaToolchain({packaged: app.isPackaged}).catch(error => {
+    if (!mainWindow || quitting) return
+    void dialog.showMessageBox(mainWindow, {type: 'warning', title: '视频工具不可用', message: '视频探测与交付暂不可用，图片和文案仍可使用。',
+      detail: `${error.message}\n${app.isPackaged ? '请重新安装包含 media-tools 的完整安装包。' : '开发环境请安装 FFmpeg/ffprobe，或设置 COMISC_FFMPEG_PATH 和 COMISC_FFPROBE_PATH。'}`})
+  })
 })
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })

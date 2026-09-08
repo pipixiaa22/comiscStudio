@@ -56,6 +56,7 @@ contextBridge.exposeInMainWorld('mangaDesk', {
         copy: input => ipcRenderer.invoke('assistant:copy', input),
         command: input => ipcRenderer.invoke('assistant:command', input),
         prepare: input => ipcRenderer.invoke('assistant:prepare', input),
+        cancelPrepare: input => ipcRenderer.invoke('assistant:cancel-prepare', input),
         startDrag: token => ipcRenderer.send('assistant:start-drag', token),
         openAssetDirectory: token => ipcRenderer.invoke('assistant:open-asset-directory', token),
         onSnapshot: callback => {

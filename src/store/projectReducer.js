@@ -174,7 +174,8 @@ export function projectReducer(state, action) {
                 const requested = project.blocks.findIndex(block => block.id === action.insertAfterId)
                 const index = requested >= 0 ? requested + 1 : project.blocks.length
                 const inserted = texts.map((text, offset) => ({...createBlock(index + offset), text, updatedAt: now()}))
-                const onlyEmpty = project.blocks.length === 1 && !project.blocks[0].text.trim() && !project.blocks[0].assets.length
+                // 只有“空白且没有录音”的首段才整体替换，避免吞掉已录制的 Take。
+                const onlyEmpty = project.blocks.length === 1 && !project.blocks[0].text.trim() && !project.blocks[0].assets.length && !project.blocks[0].voice?.takes?.length
                 if (onlyEmpty) project.blocks = inserted
                 else project.blocks.splice(index, 0, ...inserted)
                 project.blocks = project.blocks.map((block, order) => ({...block, order}))
