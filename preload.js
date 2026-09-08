@@ -2,7 +2,7 @@ const {contextBridge, ipcRenderer} = require('electron')
 contextBridge.exposeInMainWorld('mangaDesk', {
     chooseDirectory: () => ipcRenderer.invoke('images:choose-directory'),
     choosePdf: () => ipcRenderer.invoke('images:choose-pdf'),
-    pdfUrl: file => ipcRenderer.invoke('pdf:url', file),
+    readPdf: file => ipcRenderer.invoke('pdf:read', file),
     validateSources: sources => ipcRenderer.invoke('sources:validate', sources),
     chooseSourceReplacement: input => ipcRenderer.invoke('sources:choose-replacement', input),
     chooseExportDirectory: () => ipcRenderer.invoke('export:choose-directory'),

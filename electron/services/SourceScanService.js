@@ -41,6 +41,11 @@ class SourceScanService {
     return []
   }
 
+  async readPdf(file) {
+    if (typeof file !== 'string' || !path.isAbsolute(file) || !this.isPdf(file)) throw new Error('无效的 PDF 路径')
+    return new Uint8Array(await fs.readFile(file))
+  }
+
   async validateSources(sources) {
     if (!Array.isArray(sources)) throw new Error('无效的来源列表')
     const pdfChecks = new Map()

@@ -59,7 +59,7 @@ app.whenReady().then(() => {
   const voiceRecordingService = new VoiceRecordingService(projectService)
   assistantWindowService = new AssistantWindowService({ app, preload: path.join(__dirname, 'preload.js'), indexFile: path.join(__dirname, 'dist', 'index.html') })
   registerProjectIpc({ ipcMain, projectService, sourceScanService, exportService })
-  registerSourceIpc({ ipcMain, dialog, sourceScanService, localMediaService })
+  registerSourceIpc({ ipcMain, dialog, sourceScanService })
   registerSystemIpc({ ipcMain, clipboard })
   registerExportIpc({ ipcMain, dialog, shell, exportService })
   registerVoiceIpc({ ipcMain, voiceRecordingService, localMediaService })

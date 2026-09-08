@@ -1,7 +1,7 @@
 const fs = require('fs/promises')
 const path = require('path')
 
-function registerSourceIpc({ ipcMain, dialog, sourceScanService, localMediaService }) {
+function registerSourceIpc({ ipcMain, dialog, sourceScanService }) {
   ipcMain.handle('images:choose-directory', async () => {
     const selection = await dialog.showOpenDialog({ properties: ['openDirectory'] })
     if (selection.canceled) return null
@@ -14,12 +14,9 @@ function registerSourceIpc({ ipcMain, dialog, sourceScanService, localMediaServi
     const file = selection.filePaths[0]
     return { directory: path.dirname(file), sourcePath: file, name: path.basename(file, path.extname(file)), images: await sourceScanService.scanPdf(file) }
   })
-  // PDF.js pages through the file with range requests instead of receiving the
-  // whole document as a Uint8Array over IPC.
-  ipcMain.handle('pdf:url', (_, file) => {
-    if (typeof file !== 'string' || !path.isAbsolute(file) || !sourceScanService.isPdf(file)) throw new Error('无效的 PDF 路径')
-    return localMediaService.register('pdf', file).url
-  })
+  // PDF.js cannot use a custom protocol for streaming (it only sends Range
+  // requests for http(s) URLs), so the document arrives as bytes over IPC.
+  ipcMain.handle('pdf:read', (_, file) => sourceScanService.readPdf(file))
   // Lets a user point a missing source at its new location, which may be a single
   // file (the page itself) or the folder that now holds the whole set.
   ipcMain.handle('sources:choose-replacement', async (_, input) => {
