@@ -1,6 +1,6 @@
 import {useMemo, useState} from 'react'
 
-export function useReaderController({item, sources, fitMode, setFitMode, onSelect}) {
+export function useReaderController({item, sources, setFitMode, onSelect}) {
     const [active, setActive] = useState(item)
     const [pageInput, setPageInput] = useState(String(item.pageNumber || 1))
     const [pageError, setPageError] = useState('')

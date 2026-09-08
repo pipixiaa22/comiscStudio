@@ -1,4 +1,6 @@
 node_modules
+.pnpm-store/
+dist/
 release/
 resources/**/media-tools/ffmpeg
 resources/**/media-tools/ffprobe

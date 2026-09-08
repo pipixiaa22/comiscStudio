@@ -19,7 +19,11 @@ const {VideoRenderService} = require('./electron/services/VideoRenderService')
 const {registerVideoIpc} = require('./electron/ipc/registerVideoIpc')
 const {MediaDeliveryService} = require('./electron/services/MediaDeliveryService')
 const {checkMediaToolchain} = require('./electron/services/MediaToolchainService')
-protocol.registerSchemesAsPrivileged([{scheme: 'studio-video', privileges: {standard: true, secure: true, stream: true, supportFetchAPI: true}}])
+const {LocalMediaService} = require('./electron/services/LocalMediaService')
+protocol.registerSchemesAsPrivileged([
+  {scheme: 'studio-video', privileges: {standard: true, secure: true, stream: true, supportFetchAPI: true}},
+  {scheme: 'studio-media', privileges: {standard: true, secure: true, stream: true, supportFetchAPI: true}}
+])
 
 let mainWindow
 
@@ -49,14 +53,16 @@ app.whenReady().then(() => {
   protocol.handle('studio-video', request => playbackService.respond(request))
   registerVideoIpc({ipcMain, dialog, mainWindow: () => mainWindow, probeService: new VideoProbeService({packaged: app.isPackaged}), playbackService, frameService: new VideoFrameService({packaged: app.isPackaged})})
   const sourceScanService = new SourceScanService()
+  const localMediaService = new LocalMediaService()
+  protocol.handle('studio-media', request => localMediaService.respond(request))
   const exportService = new ExportService(projectService, new VideoRenderService({packaged: app.isPackaged}))
   const voiceRecordingService = new VoiceRecordingService(projectService)
   assistantWindowService = new AssistantWindowService({ app, preload: path.join(__dirname, 'preload.js'), indexFile: path.join(__dirname, 'dist', 'index.html') })
   registerProjectIpc({ ipcMain, projectService, sourceScanService, exportService })
-  registerSourceIpc({ ipcMain, dialog, sourceScanService })
+  registerSourceIpc({ ipcMain, dialog, sourceScanService, localMediaService })
   registerSystemIpc({ ipcMain, clipboard })
   registerExportIpc({ ipcMain, dialog, shell, exportService })
-  registerVoiceIpc({ ipcMain, voiceRecordingService })
+  registerVoiceIpc({ ipcMain, voiceRecordingService, localMediaService })
   assistantIpc = registerAssistantIpc({ ipcMain, shell, clipboard, assistantWindowService, projectService, mainWindow: () => mainWindow,
     deliveryService: new MediaDeliveryService(projectService, new VideoRenderService({packaged: app.isPackaged})) })
   createMainWindow()

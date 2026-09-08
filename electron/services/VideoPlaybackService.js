@@ -2,16 +2,8 @@ const fs = require('fs/promises')
 const {createReadStream} = require('fs')
 const {Readable} = require('stream')
 const crypto = require('crypto')
+const {parseByteRange} = require('./byteRange')
 
-function parseByteRange(header, size) {
-  if (!header) return {start: 0, end: size - 1, partial: false}
-  const match = /^bytes=(\d*)-(\d*)$/.exec(header)
-  if (!match || (!match[1] && !match[2])) throw new Error('Invalid range')
-  const start = match[1] ? Number(match[1]) : Math.max(0, size - Number(match[2]))
-  const end = match[1] && match[2] ? Math.min(Number(match[2]), size - 1) : size - 1
-  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || start > end || start >= size) throw new Error('Invalid range')
-  return {start, end, partial: true}
-}
 class VideoPlaybackService {
   constructor(projectService) { this.projects = projectService; this.imported = new Map(); this.tokens = new Map() }
   register(projectId, source) {

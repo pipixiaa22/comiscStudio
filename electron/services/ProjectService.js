@@ -162,6 +162,37 @@ class ProjectService {
         }
         return this.save(project)
     }
+
+    // Turns one user-picked replacement path into the mapping relocateSources
+    // expects, keeping a PDF page number and re-registering the folder the new
+    // file lives in so the project can still enumerate its sources afterwards.
+    async relocateSource(id, {sourceId, newPath, kind} = {}) {
+        if (typeof newPath !== 'string' || !path.isAbsolute(newPath)) throw new Error('请选择有效的替换位置')
+        const project = await this.load(id)
+        const source = project.sources.find(item => item.id === sourceId)
+        if (!source) throw new Error('来源不存在')
+        const target = path.resolve(newPath)
+        const isPdfPage = Boolean(source.pdfPath) || source.kind === 'pdf-page'
+        if (isPdfPage) {
+            const page = Number(source.pageNumber || /#page=(\d+)$/.exec(source.path || '')?.[1]) || 1
+            if (path.extname(target).toLowerCase() !== '.pdf') throw new Error('请选择对应的 PDF 文件')
+            source.path = `${target}#page=${page}`
+            source.pdfPath = target
+            source.fileName = path.basename(target)
+        } else if (kind === 'directory') {
+            const name = path.basename(source.path)
+            source.path = path.join(target, name)
+            source.pdfPath = null
+            source.fileName = name
+        } else {
+            source.path = target
+            source.pdfPath = null
+            source.fileName = path.basename(target)
+        }
+        const directory = kind === 'directory' ? target : path.dirname(target)
+        project.sourceDirectories = [...new Set([...(project.sourceDirectories || []), directory])]
+        return this.save(project)
+    }
 }
 
 module.exports = {ProjectService}

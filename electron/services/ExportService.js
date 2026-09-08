@@ -2,9 +2,13 @@ const fs = require('fs/promises')
 const path = require('path')
 const crypto = require('crypto')
 const {createExportPlan, validatePackageName, sourceFile} = require('./ExportPlanner')
-const {renderAsset, releasePdfDocuments} = require('./AssetRenderer')
+const {renderAsset, releaseRenderCaches} = require('./AssetRenderer')
 const {writeScript, writeSubtitles, writeStoryboard} = require('./ExportWriters')
 const {validateNarration, writeNarration} = require('./NarrationExportService')
+
+// libvips keeps its own thread pool; a handful of concurrent still renders keeps
+// that pool busy without oversubscribing the machine on image-only exports.
+const IMAGE_RENDER_CONCURRENCY = 4
 
 class ExportService {
     constructor(projectService = null, renderService = null) {
@@ -123,8 +127,9 @@ class ExportService {
             await fs.writeFile(path.join(temporary, '.mangadesk-export'), job.id, 'utf8')
             job.status = 'rendering';
             emit({stage: 'rendering', completed: 0, total: plan.assets.length})
-            const manifestAssets = []
-            for (let index = 0; index < plan.assets.length; index += 1) {
+            const manifestAssets = new Array(plan.assets.length)
+            let completed = 0
+            const renderOne = async index => {
                 if (job.cancelled) throw new Error('EXPORT_CANCELLED')
                 const asset = plan.assets[index];
                 const output = path.join(temporary, asset.file)
@@ -145,8 +150,9 @@ class ExportService {
                 } else {
                     result = await renderAsset(asset, output, input.options)
                 }
+                if (job.cancelled) throw new Error('EXPORT_CANCELLED')
                 const base = {blockId: asset.blockId, assetId: asset.assetId, sourceId: asset.sourceId, type: asset.type, file: asset.file.replace(/\\/g, '/')}
-                manifestAssets.push(asset.type === 'video' ? {
+                manifestAssets[index] = asset.type === 'video' ? {
                     ...base,
                     startUs: asset.startUs,
                     endUs: asset.endUs,
@@ -162,9 +168,30 @@ class ExportService {
                     codec: result.codec,
                     encoder: result.encoder,
                     toolVersion: result.toolVersion
-                } : {...base, ...result})
-                emit({stage: 'rendering', completed: index + 1, total: plan.assets.length})
+                } : {...base, ...result}
+                completed += 1
+                emit({stage: 'rendering', completed, total: plan.assets.length})
             }
+            // Still images are decoded/encoded by libvips, which already runs its
+            // own worker pool, so a small number of them can be rendered
+            // concurrently.  Video clips drive ffmpeg, which saturates the CPU on
+            // its own, so they stay strictly serialized.
+            const imageIndexes = plan.assets.map((asset, index) => asset.type === 'video' ? -1 : index).filter(index => index >= 0)
+            const videoIndexes = plan.assets.map((asset, index) => asset.type === 'video' ? index : -1).filter(index => index >= 0)
+            const imageWorkers = Array.from({length: Math.min(IMAGE_RENDER_CONCURRENCY, imageIndexes.length)}, async () => {
+                while (imageIndexes.length) {
+                    if (job.cancelled) throw new Error('EXPORT_CANCELLED')
+                    const index = imageIndexes.shift()
+                    await renderOne(index)
+                }
+            })
+            const videoWorker = (async () => {
+                for (const index of videoIndexes) {
+                    if (job.cancelled) throw new Error('EXPORT_CANCELLED')
+                    await renderOne(index)
+                }
+            })()
+            await Promise.all([videoWorker, ...imageWorkers])
             if (job.cancelled) throw new Error('EXPORT_CANCELLED')
             job.status = 'writingDocuments';
             emit({stage: 'writingDocuments', completed: plan.assets.length, total: plan.assets.length})
@@ -238,9 +265,9 @@ class ExportService {
             })
             emit({stage: job.status, completed: 0, total: 0, error: job.error})
         } finally {
-            // PDF.js documents are reused within this job and released once its
-            // rendering work has finished, keeping long-lived main-process RAM bounded.
-            await releasePdfDocuments()
+            // Decoded sources and parsed PDF documents are reused across the whole
+            // job, then released so long-lived main-process RAM stays bounded.
+            await releaseRenderCaches()
         }
     }
 

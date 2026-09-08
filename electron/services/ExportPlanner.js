@@ -1,6 +1,8 @@
 const path = require('path')
 const {validateVideoAsset} = require('../../src/shared/domain/mediaAsset')
 
+// Control characters are rejected on purpose: they are invalid in file names.
+// eslint-disable-next-line no-control-regex
 const illegalName = /[<>:"/\\|?*\x00-\x1f]/
 const deviceName = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i
 const supportedImageTypes = new Set(['.jpg', '.jpeg', '.png', '.webp', '.bmp'])

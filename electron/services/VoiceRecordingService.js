@@ -56,6 +56,8 @@ class VoiceRecordingService {
   async recover(sessionId) { const candidates = await fs.readdir(this.projectService.root, { withFileTypes: true }); for (const candidate of candidates.filter(item => item.isDirectory())) { const recording = path.join(this.root(candidate.name), 'audio', 'recording'); try { const meta = JSON.parse(await fs.readFile(path.join(recording, `${sessionId}.json`), 'utf8')); const stat = await fs.stat(path.join(recording, `${sessionId}.pcm.part`)); this.sessions.set(sessionId, { ...meta, file: path.join(recording, `${sessionId}.pcm.part`), sequence: 0, bytes: stat.size, status: 'paused' }); return this.finish(sessionId) } catch {} } throw new Error('Recoverable recording was not found') }
   async trashTake({ projectId, relativePath }) { const root = this.root(projectId), file = takeFile(root, relativePath), trashId = crypto.randomUUID(), target = path.join(root, 'audio', 'trash', `${trashId}.wav`); await fs.mkdir(path.dirname(target), { recursive: true }); await fs.rename(file, target); return { trashId, relativePath } }
   async restoreTake({ projectId, trashId, relativePath }) { const root = this.root(projectId), source = path.join(root, 'audio', 'trash', `${trashId}.wav`), target = takeFile(root, relativePath); await fs.mkdir(path.dirname(target), { recursive: true }); await fs.rename(source, target); return true }
-  async readTake({ projectId, relativePath }) { const root = this.root(projectId), file = path.resolve(root, relativePath); if (!file.startsWith(path.join(root, 'audio') + path.sep) || path.extname(file) !== '.wav') throw new Error('Invalid take path'); return new Uint8Array(await fs.readFile(file)) }
+  // Returns the validated take path for streaming playback, so a whole WAV is
+  // never copied through IPC.
+  resolveTake({ projectId, relativePath }) { const root = this.root(projectId), file = takeFile(root, relativePath); return file }
 }
 module.exports = { VoiceRecordingService, SAMPLE_RATE, CHANNELS }

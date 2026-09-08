@@ -2,6 +2,10 @@ import {useEffect, useRef, useState} from 'react'
 import {ChevronDown, ChevronRight, Mic, Pause, Play, Square} from 'lucide-react'
 import {Button} from '../../../components/ui/button'
 import {mangaDeskBridge} from '../../../shared/bridge/mangaDeskBridge'
+import {createResampler, toInt16} from '../model/resample'
+// no-inline keeps the worklet as a real module URL; a data: URL is not reliably
+// loadable through AudioWorklet.addModule.
+import pcmWorkletUrl from '../worklet/pcmCapture.worklet.js?url&no-inline'
 
 export function VoiceRecorderPanel({
                                        projectId,
@@ -14,7 +18,7 @@ export function VoiceRecorderPanel({
                                    }) {
     const [state, setState] = useState('idle'), [level, setLevel] = useState(0), [error, setError] = useState(''), [elapsed, setElapsed] = useState(0), [deviceId, setDeviceId] = useState('default'), [devices, setDevices] = useState([]), [recoverable, setRecoverable] = useState([]), [expanded, setExpanded] = useState(false)
     const session = useRef(null), stream = useRef(null), context = useRef(null), processor = useRef(null),
-        gain = useRef(null), parts = useRef([]), frames = useRef(0), sequence = useRef(0),
+        gain = useRef(null), parts = useRef([]), frames = useRef(0), sequence = useRef(0), resampler = useRef(null),
         queue = useRef(Promise.resolve()), recordedFrames = useRef(0), playback = useRef(null)
     const listDevices = async () => setDevices((await navigator.mediaDevices.enumerateDevices()).filter(item => item.kind === 'audioinput'))
     useEffect(() => {
@@ -62,11 +66,13 @@ export function VoiceRecorderPanel({
     }
     const release = async () => {
         setRecordingGuard(false)
+        processor.current?.port?.postMessage({stop: true});
         processor.current?.disconnect();
         gain.current?.disconnect();
         stream.current?.getTracks().forEach(track => track.stop());
         await context.current?.close();
         processor.current = gain.current = stream.current = context.current = null
+        resampler.current = null
     }
     const finalizeOnUnmount = async () => {
         const sessionId = session.current
@@ -101,11 +107,14 @@ export function VoiceRecorderPanel({
                     autoGainControl: true
                 }, video: false
             })
-            const audio = new AudioContext({sampleRate: 48000});
+            let audio
+            try { audio = new AudioContext({sampleRate: 48000}) } catch { audio = new AudioContext() }
             // Assign these immediately: validation/session creation may fail.
             stream.current = media;
             context.current = audio;
-            if (audio.sampleRate !== 48000) throw new Error('当前设备无法提供 48 kHz 录音')
+            // A device that refuses a 48 kHz context is recorded at its native
+            // rate and resampled on the fly, so takes stay 48 kHz mono on disk.
+            resampler.current = createResampler(audio.sampleRate, 48000)
             const result = await mangaDeskBridge.voice.start({
                 projectId,
                 blockId: block.id,
@@ -119,17 +128,15 @@ export function VoiceRecorderPanel({
             frames.current = 0;
             recordedFrames.current = 0;
             queue.current = Promise.resolve();
-            const node = audio.createScriptProcessor(4096, 1, 1), silent = audio.createGain();
+            const silent = audio.createGain();
             silent.gain.value = 0
-            node.onaudioprocess = event => {
-                const samples = event.inputBuffer.getChannelData(0);
+            const source = audio.createMediaStreamSource(media)
+            const onChunk = chunk => {
+                const samples = resampler.current(chunk)
+                if (!samples.length) return
                 let peak = 0;
-                const pcm = new Int16Array(samples.length);
-                for (let index = 0; index < samples.length; index += 1) {
-                    const sample = Math.max(-1, Math.min(1, samples[index]));
-                    pcm[index] = sample < 0 ? sample * 32768 : sample * 32767;
-                    peak = Math.max(peak, Math.abs(sample))
-                }
+                for (let index = 0; index < samples.length; index += 1) peak = Math.max(peak, Math.abs(samples[index]))
+                const pcm = toInt16(samples);
                 setLevel(peak);
                 parts.current.push(pcm);
                 frames.current += pcm.length;
@@ -139,10 +146,22 @@ export function VoiceRecorderPanel({
                     void stop()
                 })
             }
-            audio.createMediaStreamSource(media).connect(node);
-            node.connect(silent);
+            if (audio.audioWorklet) {
+                // Preferred path: capture runs off the main thread.
+                await audio.audioWorklet.addModule(pcmWorkletUrl)
+                const node = new AudioWorkletNode(audio, 'pcm-capture')
+                node.port.onmessage = event => onChunk(event.data)
+                source.connect(node);
+                node.connect(silent)
+                processor.current = node
+            } else {
+                const node = audio.createScriptProcessor(4096, 1, 1)
+                node.onaudioprocess = event => onChunk(event.inputBuffer.getChannelData(0))
+                source.connect(node);
+                node.connect(silent)
+                processor.current = node
+            }
             silent.connect(audio.destination);
-            processor.current = node;
             gain.current = silent;
             setElapsed(0);
             setState('recording');
@@ -192,15 +211,14 @@ export function VoiceRecorderPanel({
     }
     const play = async take => {
         playback.current?.pause()
-        const bytes = await mangaDeskBridge.voice.readTake({projectId, relativePath: take.relativePath});
-        const url = URL.createObjectURL(new Blob([bytes], {type: 'audio/wav'}));
+        // Streamed from the main process, so long takes are never copied whole.
+        const url = await mangaDeskBridge.voice.takeUrl({projectId, relativePath: take.relativePath});
         const audio = new Audio(url);
         const isActive = take.id === block.voice?.activeTakeId;
         const startMs = isActive ? block.voice?.trimStartMs || 0 : 0;
         const endMs = isActive ? block.voice?.trimEndMs ?? take.durationMs : take.durationMs;
         audio.onloadedmetadata = () => { audio.currentTime = startMs / 1000 };
         audio.ontimeupdate = () => { if (audio.currentTime >= endMs / 1000) audio.pause() };
-        audio.onended = audio.onpause = () => URL.revokeObjectURL(url);
         playback.current = audio
         await audio.play()
     }

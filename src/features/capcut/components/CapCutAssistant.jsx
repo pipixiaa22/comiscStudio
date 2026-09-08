@@ -1,10 +1,18 @@
 import {useEffect, useMemo, useState} from 'react'
-import {ChevronLeft, ChevronRight, Copy, ExternalLink, Pin, PinOff, Play} from 'lucide-react'
+import {ChevronLeft, ChevronRight, Copy, ExternalLink, Pin, PinOff, Play, Trash2} from 'lucide-react'
 import {Button} from '../../../components/ui/button'
 import {mangaDeskBridge} from '../../../shared/bridge/mangaDeskBridge'
 
+function formatBytes(bytes) {
+    if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
+    const units = ['B', 'KB', 'MB', 'GB']
+    const power = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)))
+    return `${(bytes / 1024 ** power).toFixed(power ? 1 : 0)} ${units[power]}`
+}
+
 export function CapCutAssistant() {
     const [snapshot, setSnapshot] = useState(null), [blockId, setBlockId] = useState(null), [topmost, setTopmost] = useState(true), [notice, setNotice] = useState('')
+    const [cacheOpen, setCacheOpen] = useState(false), [cache, setCache] = useState(null)
     useEffect(() => {
         const off = mangaDeskBridge.assistant.onSnapshot(next => {
             setSnapshot(current => ({...next, blocks: next.blocks.map(block => ({...block, assets: block.assets.map(asset => {
@@ -79,6 +87,25 @@ export function CapCutAssistant() {
             await mangaDeskBridge.assistant.cancelPrepare({sessionId: snapshot.sessionId, revision: snapshot.revision, blockId, assetId: asset.id})
         } catch (error) { setNotice(error.message) }
     }
+    const loadCache = async () => {
+        try { setCache(await mangaDeskBridge.assistant.cacheList()) } catch (error) { setNotice(error.message) }
+    }
+    useEffect(() => {
+        if (cacheOpen) void loadCache()
+    }, [cacheOpen])
+    const removeCache = async name => {
+        if (!window.confirm('删除这份交付文件？已经引用它的剪映项目将无法再读取。')) return
+        try {
+            await mangaDeskBridge.assistant.cacheRemove(name);
+            await loadCache()
+        } catch (error) { setNotice(error.message) }
+    }
+    const pruneCache = async () => {
+        try {
+            await mangaDeskBridge.assistant.cachePrune();
+            await loadCache()
+        } catch (error) { setNotice(error.message) }
+    }
     useEffect(() => {
         const keydown = event => {
             if (event.isComposing || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName)) return
@@ -125,6 +152,22 @@ export function CapCutAssistant() {
                 {['queued', 'rendering'].includes(asset.preparation?.state) && <div className="mt-2 flex items-center gap-2 text-xs text-slate-400"><span>{asset.preparation.state === 'queued' ? '等待准备…' : `准备中 ${Math.round((asset.preparation.progress || 0) * 100)}%`}</span><Button size="sm" variant="ghost" onClick={() => cancel(asset)}>取消</Button></div>}
                 {asset.preparation?.error && <p role="alert" className="mt-2 text-xs text-amber-300">{asset.preparation.error}</p>}
             </div>)}</div>
+        </section>
+        <section className="mt-3 rounded border border-slate-700 bg-slate-900/40 text-xs">
+            <button className="flex w-full items-center gap-2 p-2" onClick={() => setCacheOpen(value => !value)}>
+                <b>素材缓存</b>{cache && <span className="text-slate-400">{cache.entries.length} 份 · {formatBytes(cache.totalBytes)}</span>}
+                <span className="ml-auto text-slate-400">{cacheOpen ? '收起' : '查看'}</span></button>
+            {cacheOpen && <div className="border-t border-slate-700 p-2">
+                {!cache?.entries.length && <p className="text-slate-400">还没有已交付的素材。</p>}
+                {cache?.entries.map(entry => <div key={entry.name} className="flex items-center gap-2 py-1">
+                    <span className="min-w-0 flex-1 truncate">{entry.type === 'video' ? '视频' : '图片'} · {formatBytes(entry.size)} · {new Date(entry.createdAt).toLocaleString()}</span>
+                    <Button size="sm" variant="ghost" className="text-red-300" aria-label="删除交付文件" title="删除交付文件"
+                            onClick={() => removeCache(entry.name)}><Trash2 className="h-3 w-3"/></Button></div>)}
+                {Boolean(cache?.temporary.count) && <div className="mt-1 flex items-center gap-2 border-t border-slate-800 pt-2 text-slate-400">
+                    <span className="min-w-0 flex-1">未完成的临时文件 {cache.temporary.count} 个 · {formatBytes(cache.temporary.bytes)}</span>
+                    <Button size="sm" variant="secondary" onClick={pruneCache}>清理</Button></div>}
+                <p className="mt-2 text-slate-500">交付文件默认永久保留，供剪映重复导入；删除属于显式操作。</p>
+            </div>}
         </section>
         <section
             className="mt-3 grid grid-cols-3 gap-2 text-xs">{[['voiced', '配音'], ['edited', '放画面'], ['effectDone', '动效']].map(([key, label]) =>

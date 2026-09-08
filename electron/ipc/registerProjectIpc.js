@@ -25,6 +25,12 @@ function registerProjectIpc({ipcMain, projectService, sourceScanService, exportS
     ipcMain.handle('project:rename', (_, id, name) => result(async () => registerSources(await projectService.rename(id, name))))
     ipcMain.handle('project:archive', (_, id, archived) => result(async () => registerSources(await projectService.archive(id, archived))))
     ipcMain.handle('project:relocate-sources', (_, id, replacements) => result(async () => registerSources(await projectService.relocateSources(id, replacements))))
+    ipcMain.handle('project:relocate-source', (_, id, input) => result(async () => {
+        const project = await projectService.relocateSource(id, input)
+        const images = await scanProjectSources(project)
+        registerSources(project)
+        return {project, images}
+    }))
 }
 
 module.exports = {registerProjectIpc}

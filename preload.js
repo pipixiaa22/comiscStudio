@@ -2,8 +2,9 @@ const {contextBridge, ipcRenderer} = require('electron')
 contextBridge.exposeInMainWorld('mangaDesk', {
     chooseDirectory: () => ipcRenderer.invoke('images:choose-directory'),
     choosePdf: () => ipcRenderer.invoke('images:choose-pdf'),
-    readPdf: file => ipcRenderer.invoke('pdf:read', file),
+    pdfUrl: file => ipcRenderer.invoke('pdf:url', file),
     validateSources: sources => ipcRenderer.invoke('sources:validate', sources),
+    chooseSourceReplacement: input => ipcRenderer.invoke('sources:choose-replacement', input),
     chooseExportDirectory: () => ipcRenderer.invoke('export:choose-directory'),
     preflightExport: input => ipcRenderer.invoke('export:preflight', input),
     startExport: input => ipcRenderer.invoke('export:start', input),
@@ -32,7 +33,7 @@ contextBridge.exposeInMainWorld('mangaDesk', {
         resume: sessionId => ipcRenderer.invoke('voice:resume', sessionId),
         finish: sessionId => ipcRenderer.invoke('voice:finish', sessionId),
         discard: sessionId => ipcRenderer.invoke('voice:discard', sessionId),
-        readTake: input => ipcRenderer.invoke('voice:read-take', input),
+        takeUrl: input => ipcRenderer.invoke('voice:take-url', input),
         listRecoverable: projectId => ipcRenderer.invoke('voice:list-recoverable', projectId),
         recover: sessionId => ipcRenderer.invoke('voice:recover', sessionId),
         trashTake: input => ipcRenderer.invoke('voice:trash-take', input),
@@ -46,6 +47,7 @@ contextBridge.exposeInMainWorld('mangaDesk', {
     renameProject: (id, name) => ipcRenderer.invoke('project:rename', id, name),
     archiveProject: (id, archived) => ipcRenderer.invoke('project:archive', id, archived),
     relocateSources: (id, replacements) => ipcRenderer.invoke('project:relocate-sources', id, replacements),
+    relocateSource: (id, input) => ipcRenderer.invoke('project:relocate-source', id, input),
     copyText: text => ipcRenderer.invoke('system:copy-text', text)
     ,
     assistant: {
@@ -59,6 +61,9 @@ contextBridge.exposeInMainWorld('mangaDesk', {
         cancelPrepare: input => ipcRenderer.invoke('assistant:cancel-prepare', input),
         startDrag: token => ipcRenderer.send('assistant:start-drag', token),
         openAssetDirectory: token => ipcRenderer.invoke('assistant:open-asset-directory', token),
+        cacheList: () => ipcRenderer.invoke('assistant:cache-list'),
+        cacheRemove: name => ipcRenderer.invoke('assistant:cache-remove', name),
+        cachePrune: () => ipcRenderer.invoke('assistant:cache-prune'),
         onSnapshot: callback => {
             const listener = (_, payload) => callback(payload);
             ipcRenderer.on('assistant:snapshot', listener);

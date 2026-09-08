@@ -34,6 +34,7 @@ export default function App() {
     const [browserView, setBrowserView] = useState('all')
     const [view, setView] = useState('workspace')
     const [storyReturnBlockId, setStoryReturnBlockId] = useState(null)
+    const [projectToken, setProjectToken] = useState(0)
     const [error, setError] = useState('')
     const origin = useRef()
     const project = state.project
@@ -150,17 +151,41 @@ export default function App() {
         } catch (reason) { if (latestProject.current?.id === projectId) setError(reason.message) }
         finally { setVideoImporting(false); setVideoProgress('') }
     }, [project?.id, commands, videoImporting])
+    // Reloads project data written by the main process (relocation, rename) and
+    // re-hydrates the scanned source list, without changing the current view.
+    const reloadProject = useCallback(async id => {
+        const data = await mangaDeskBridge.openProject(id), nextSources = hydrateSources(data.images, data.project)
+        commands.load(data.project)
+        setSources(nextSources)
+        setSelectedSource(current => nextSources.find(source => source.sourceId === data.project.workspace.currentSourceId)
+            || nextSources.find(source => source.sourceId === current?.sourceId) || nextSources[0] || null)
+        setProjectToken(token => token + 1)
+        return data.project
+    }, [commands])
+    const relocateSource = useCallback(async sourceId => {
+        if (!project) return
+        const source = (project.sources || []).find(item => item.id === sourceId)
+        const pdfPage = Boolean(source?.pdfPath) || source?.kind === 'pdf-page'
+        try {
+            const picked = await mangaDeskBridge.chooseSourceReplacement({
+                kind: pdfPage ? 'file' : undefined,
+                title: pdfPage ? '选择对应的 PDF 文件' : '选择替换的文件或所在文件夹'
+            })
+            if (!picked) return
+            await mangaDeskBridge.relocateSource(project.id, {sourceId, newPath: picked.path, kind: picked.kind})
+            await reloadProject(project.id)
+        } catch (reason) {
+            setError(reason instanceof Error ? reason.message : '重新定位来源失败')
+        }
+    }, [project, reloadProject])
     const openProject = useCallback(async id => {
         try {
-            const data = await mangaDeskBridge.openProject(id), nextSources = hydrateSources(data.images, data.project)
-            commands.load(data.project);
-            setSources(nextSources);
-            setSelectedSource(nextSources.find(source => source.sourceId === data.project.workspace.currentSourceId) || nextSources[0] || null);
+            await reloadProject(id)
             setView('workspace')
         } catch (error) {
             setError(error instanceof Error ? error.message : '打开项目失败')
         }
-    }, [commands])
+    }, [reloadProject])
     useEffect(() => () => releaseAllPdfDocuments(), [sources])
     useEffect(() => {
         if (!state.notice) return
@@ -249,8 +274,9 @@ export default function App() {
             <Welcome onImport={importSource}/> : view === 'export' ?
                 <ExportView project={project} revision={state.revision} onSavePreset={commands.saveExportPreset} onRemovePreset={commands.removeExportPreset} onRecordDelivery={commands.recordDelivery}
                             onClose={() => setView('workspace')}/> : view === 'storyboard' ?
-                    <StoryboardView project={project} revision={state.revision} sourcesById={sourcesById}
+                    <StoryboardView project={project} revision={state.revision} reloadToken={projectToken} sourcesById={sourcesById}
                                     restoreBlockId={storyReturnBlockId} onEditBlock={editStoryboardBlock}
+                                    onRelocate={relocateSource}
                                     onOpenSource={asset => {
                         if (asset.type === 'video') {
                             const target = project.blocks.find(block => block.assets.some(item => item.id === asset.id))

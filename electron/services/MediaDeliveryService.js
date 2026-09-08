@@ -1,7 +1,7 @@
 const crypto = require('crypto')
 const fs = require('fs/promises')
 const path = require('path')
-const {renderAsset} = require('./AssetRenderer')
+const {renderAsset, releaseRenderCaches} = require('./AssetRenderer')
 const {VideoRenderService} = require('./VideoRenderService')
 const {sourceFile, sourcePage} = require('./ExportPlanner')
 const {validateVideoAsset} = require('../../src/shared/domain/mediaAsset')
@@ -9,6 +9,16 @@ const {validateVideoAsset} = require('../../src/shared/domain/mediaAsset')
 const RENDER_VERSION = 'assistant-media-v2'
 const hash = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex')
 const cancelled = () => new Error('素材准备已取消')
+
+async function directorySize(target) {
+  let total = 0
+  for (const entry of await fs.readdir(target, {withFileTypes: true}).catch(() => [])) {
+    const child = path.join(target, entry.name)
+    if (entry.isDirectory()) total += await directorySize(child)
+    else if (entry.isFile()) total += await fs.stat(child).then(stat => stat.size).catch(() => 0)
+  }
+  return total
+}
 const contentVersions = new Map()
 
 function contentVersion(asset) {
@@ -116,7 +126,12 @@ class MediaDeliveryService {
         // Only our unpublished temporary directory is disposable; delivered versions are permanent.
         await fs.rm(temporary, {recursive: true, force: true})
       }
-    }).finally(() => this.jobs.delete(jobKey))
+    }).finally(() => {
+      this.jobs.delete(jobKey)
+      // Delivery renders one asset at a time; dropping the shared render caches
+      // here keeps the main process from holding decoded pages between requests.
+      return releaseRenderCaches()
+    })
     this.jobs.set(jobKey, job)
     this.tail = job.promise.catch(() => {})
     emit({state: 'queued', progress: 0})
@@ -129,6 +144,59 @@ class MediaDeliveryService {
     for (const child of job.children) child.kill()
     return true
   }
+
+  // Delivered files are permanent by design: a CapCut project may still point at
+  // them.  This only reports what is on disk so the user can delete explicitly.
+  async stats(projectId) {
+    const directory = this.directory(projectId)
+    const entries = []
+    let temporaryCount = 0, temporaryBytes = 0
+    for (const name of await fs.readdir(directory).catch(() => [])) {
+      const target = path.join(directory, name)
+      if (name.startsWith('.preparing-')) {
+        temporaryCount += 1
+        temporaryBytes += await directorySize(target)
+        continue
+      }
+      try {
+        const manifest = JSON.parse(await fs.readFile(path.join(target, 'manifest.json'), 'utf8'))
+        entries.push({
+          name,
+          key: manifest.key,
+          type: manifest.type,
+          createdAt: manifest.createdAt || 0,
+          size: await directorySize(target)
+        })
+      } catch {
+      }
+    }
+    entries.sort((left, right) => right.createdAt - left.createdAt)
+    return {
+      entries,
+      totalBytes: entries.reduce((total, entry) => total + entry.size, 0),
+      temporary: {count: temporaryCount, bytes: temporaryBytes}
+    }
+  }
+
+  async remove(projectId, name) {
+    const directory = this.directory(projectId)
+    const target = path.resolve(directory, String(name || ''))
+    if (!target.startsWith(directory + path.sep)) throw new Error('缓存条目无效')
+    await fs.rm(target, {recursive: true, force: true})
+    return true
+  }
+
+  async pruneTemporary(projectId) {
+    const directory = this.directory(projectId)
+    let removed = 0
+    for (const name of await fs.readdir(directory).catch(() => [])) {
+      if (!name.startsWith('.preparing-')) continue
+      await fs.rm(path.join(directory, name), {recursive: true, force: true})
+      removed += 1
+    }
+    return {removed}
+  }
+
   async shutdown() {
     for (const job of this.jobs.values()) this.cancel(job.projectId, job.key)
     await this.tail

@@ -8,6 +8,8 @@ const fingerprint = block => JSON.stringify({text: block.text, assets: block.ass
 
 export function ExportView({project, revision, onClose, onSavePreset, onRemovePreset, onRecordDelivery}) {
     const [destination, setDestination] = useState(null)
+    // Control characters are stripped on purpose: they are invalid in file names.
+    // eslint-disable-next-line no-control-regex
     const [packageName, setPackageName] = useState(() => String(project.name || '素材包').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/, '') || '素材包')
     const [options, setOptions] = useState({
         format: 'jpeg',

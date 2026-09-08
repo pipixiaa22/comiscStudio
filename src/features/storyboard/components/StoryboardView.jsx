@@ -1,6 +1,6 @@
 import {VideoAssetSummary} from '../../video/components/VideoAssetSummary'
 import {useEffect, useMemo, useRef, useState} from 'react'
-import {AlertTriangle, RefreshCw} from 'lucide-react'
+import {AlertTriangle, Link2, RefreshCw} from 'lucide-react'
 import {Button} from '../../../components/ui/button'
 import {pageNumber} from '../../../shared/lib/pageNumber'
 import {mangaDeskBridge} from '../../../shared/bridge/mangaDeskBridge'
@@ -8,10 +8,13 @@ import {SourcePreview} from '../../assets/components/SourcePreview'
 import {ProjectProgress} from '../../project/components/ProjectProgress'
 import {ISSUE_LABELS, validateStoryboard} from '../model/validateStoryboard'
 
-export function StoryboardView({project, revision, sourcesById, restoreBlockId, onEditBlock, onOpenSource}) {
+const RELOCATABLE = new Set(['SOURCE_NOT_FOUND', 'SOURCE_UNAVAILABLE'])
+
+export function StoryboardView({project, revision, reloadToken, sourcesById, restoreBlockId, onEditBlock, onOpenSource, onRelocate}) {
     const [sourceStatus, setSourceStatus] = useState({})
     const [checkedAt, setCheckedAt] = useState(null)
     const [checking, setChecking] = useState(false)
+    const [relocating, setRelocating] = useState('')
     const [filter, setFilter] = useState('all')
     const current = useRef({projectId: project.id, revision})
     current.current = {projectId: project.id, revision}
@@ -28,9 +31,17 @@ export function StoryboardView({project, revision, sourcesById, restoreBlockId, 
             setChecking(false)
         }
     }
+    const relocate = async sourceId => {
+        setRelocating(sourceId)
+        try {
+            await onRelocate(sourceId)
+        } finally {
+            setRelocating('')
+        }
+    }
     useEffect(() => {
         void runCheck()
-    }, [project.id, revision])
+    }, [project.id, revision, reloadToken])
     useEffect(() => {
         if (restoreBlockId) document.getElementById(`story-${restoreBlockId}`)?.scrollIntoView({block: 'start'})
     }, [restoreBlockId])
@@ -55,7 +66,7 @@ export function StoryboardView({project, revision, sourcesById, restoreBlockId, 
                 <span className="text-[10px] text-slate-500">检查于 {new Date(checkedAt).toLocaleTimeString()}</span>}
             </div>
         </div>
-        <div className="mx-auto max-w-5xl space-y-4">{visible.map((block, index) => {
+        <div className="mx-auto max-w-5xl space-y-4">{visible.map(block => {
             const issues = checkByBlock.get(block.id) || [];
             return <article id={`story-${block.id}`} key={block.id}
                             className="scroll-mt-24 rounded-lg border border-slate-700 bg-[#171c26] p-4">
@@ -73,10 +84,14 @@ export function StoryboardView({project, revision, sourcesById, restoreBlockId, 
                         className="block p-1 text-[10px] text-slate-400">{assetIndex + 1} · {asset.type === 'video' ? '视频' : asset.crop ? 'Crop' : '整页'}</span>
                     </button>)}</div>
                 {issues.length > 0 &&
-                    <div className="mt-3 flex flex-wrap gap-2">{issues.map((issue, issueIndex) => <span
+                    <div className="mt-3 flex flex-wrap items-center gap-2">{issues.map((issue, issueIndex) => <span
                         key={`${issue.code}-${issue.assetId || issueIndex}`}
                         className="flex items-center gap-1 rounded bg-amber-950 px-2 py-1 text-xs text-amber-200"><AlertTriangle
-                        className="h-3 w-3"/>{ISSUE_LABELS[issue.code]}</span>)}</div>}</article>
+                        className="h-3 w-3"/>{ISSUE_LABELS[issue.code]}{RELOCATABLE.has(issue.code) && issue.sourceId &&
+                        <Button size="sm" variant="ghost" className="h-5 px-1 text-amber-100 hover:bg-amber-900"
+                                disabled={relocating === issue.sourceId}
+                                onClick={() => relocate(issue.sourceId)}><Link2
+                            className="h-3 w-3"/>{relocating === issue.sourceId ? '定位中…' : '重新定位'}</Button>}</span>)}</div>}</article>
         })}</div>
     </main>
 }

@@ -1,0 +1,22 @@
+{
+  "semi": false,
+  "singleQuote": true,
+  "printWidth": 160,
+  "trailingComma": "none",
+  "bracketSpacing": false,
+  "arrowParens": "avoid",
+  "overrides": [
+    {
+      "files": ["electron/**/*.js", "main.js", "preload.js", "scripts/**/*.cjs", "tests/**/*.cjs", "*.config.js"],
+      "options": {
+        "tabWidth": 2
+      }
+    },
+    {
+      "files": ["*.md"],
+      "options": {
+        "proseWrap": "preserve"
+      }
+    }
+  ]
+}

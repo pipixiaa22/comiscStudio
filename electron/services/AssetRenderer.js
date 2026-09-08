@@ -8,9 +8,53 @@ const { sourceFile, sourcePage } = require('./ExportPlanner')
 // file fingerprint so pages share the expensive read/parse work, while a file
 // replacement is still detected before it can be reused.
 const pdfDocuments = new Map()
+// Rendering the same PDF page for several blocks at the same DPI repeats a full
+// page rasterization, so the encoded PNG is reused until the byte budget is hit.
+const pdfPages = new Map()
+// Image sources are decoded once per file instead of once per asset.  Entries are
+// fingerprinted so an edited source is never reused, and the map is bounded by
+// bytes to keep long-lived main-process RAM predictable.
+const decodedSources = new Map()
+const inFlightDecodes = new Map()
+const DECODE_CACHE_MAX_BYTES = 192 * 1024 * 1024
+const DECODE_CACHE_MAX_ENTRIES = 48
+const PDF_PAGE_CACHE_MAX_BYTES = 128 * 1024 * 1024
+let decodeCacheBytes = 0
+let pdfPageCacheBytes = 0
 
 async function fingerprint(file) { const stat = await fs.stat(file); return { size: stat.size, mtimeMs: stat.mtimeMs } }
-function sameFingerprint(left, right) { return left.size === right.size && left.mtimeMs === right.mtimeMs }
+function sameFingerprint(left, right) { return Boolean(left && right) && left.size === right.size && left.mtimeMs === right.mtimeMs }
+
+function evictOldest(cache, {maxBytes, maxEntries, bytesOf}) {
+  let total = 0
+  for (const entry of cache.values()) total += bytesOf(entry)
+  while (cache.size > maxEntries || total > maxBytes) {
+    const [key, entry] = cache.entries().next().value
+    cache.delete(key)
+    total -= bytesOf(entry)
+  }
+  return total
+}
+
+async function loadDecodedSource(file) {
+  const stat = await fingerprint(file)
+  const cached = decodedSources.get(file)
+  if (cached && sameFingerprint(cached.fingerprint, stat)) return cached.buffer
+  if (cached) decodedSources.delete(file)
+  const pending = inFlightDecodes.get(file)
+  if (pending && sameFingerprint(pending.fingerprint, stat)) return pending.promise
+  // Materialize EXIF rotation before reading dimensions: metadata on a rotated
+  // pipeline still describes the encoded JPEG, not its displayed orientation.
+  const promise = sharp(file, { animated: false }).rotate().toBuffer().then(buffer => {
+    decodedSources.set(file, { fingerprint: stat, buffer })
+    decodeCacheBytes = evictOldest(decodedSources, {maxBytes: DECODE_CACHE_MAX_BYTES, maxEntries: DECODE_CACHE_MAX_ENTRIES, bytesOf: entry => entry.buffer.length})
+    return buffer
+  }).finally(() => {
+    if (inFlightDecodes.get(file)?.promise === promise) inFlightDecodes.delete(file)
+  })
+  inFlightDecodes.set(file, { fingerprint: stat, promise })
+  return promise
+}
 function exportCanvas(options) {
   return {
     width: Number.isInteger(options.canvasWidth) && options.canvasWidth > 0 ? options.canvasWidth : 1920,
@@ -53,7 +97,7 @@ async function renderAsset(asset, output, options) {
   // pipeline still describes the encoded JPEG, not its displayed orientation.
   let image
   if (isPdf) image = sharp(await renderPdfPage(file, sourcePage(asset.source), options.pdfDpi || 200))
-  else image = sharp(await sharp(file, { animated: false }).rotate().toBuffer())
+  else image = sharp(await loadDecodedSource(file))
   const metadata = await image.metadata()
   if (!metadata.width || !metadata.height) throw new Error('无法取得素材尺寸')
   if (asset.crop) {
@@ -97,9 +141,14 @@ async function renderAsset(asset, output, options) {
 
 async function renderPdfPage(file, pageNumber, dpi) {
   const stat = await fingerprint(file)
+  const pageKey = `${file}#page=${pageNumber}@${dpi}`
+  const rendered = pdfPages.get(pageKey)
+  if (rendered && sameFingerprint(rendered.fingerprint, stat)) return rendered.buffer
+  if (rendered) pdfPages.delete(pageKey)
   const cached = pdfDocuments.get(file)
   if (cached && !sameFingerprint(cached.fingerprint, stat)) {
     pdfDocuments.delete(file)
+    for (const key of [...pdfPages.keys()]) if (key.startsWith(`${file}#page=`)) pdfPages.delete(key)
     await cached.loadingTask.destroy().catch(() => {})
   }
   let entry = pdfDocuments.get(file)
@@ -116,13 +165,31 @@ async function renderPdfPage(file, pageNumber, dpi) {
   const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height))
   await page.render({ canvas, canvasContext: canvas.getContext('2d'), viewport }).promise
   page.cleanup()
-  return canvas.toBuffer('image/png')
+  const buffer = canvas.toBuffer('image/png')
+  pdfPages.set(pageKey, {fingerprint: stat, buffer})
+  pdfPageCacheBytes = evictOldest(pdfPages, {maxBytes: PDF_PAGE_CACHE_MAX_BYTES, maxEntries: 24, bytesOf: item => item.buffer.length})
+  return buffer
 }
 
-async function releasePdfDocuments() {
+// Releases every parsed document and rasterized page so a finished export cannot
+// keep large buffers alive in the main process.
+async function releaseRenderCaches() {
   const entries = [...pdfDocuments.values()]
   pdfDocuments.clear()
+  pdfPages.clear()
+  pdfPageCacheBytes = 0
+  decodedSources.clear()
+  inFlightDecodes.clear()
+  decodeCacheBytes = 0
   await Promise.allSettled(entries.map(entry => entry.loadingTask.destroy()))
 }
 
-module.exports = { renderAsset, releasePdfDocuments }
+function renderCacheStats() {
+  return {
+    documents: pdfDocuments.size,
+    pages: {count: pdfPages.size, bytes: pdfPageCacheBytes},
+    decoded: {count: decodedSources.size, bytes: decodeCacheBytes}
+  }
+}
+
+module.exports = { renderAsset, releaseRenderCaches, renderCacheStats }

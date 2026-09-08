@@ -23,8 +23,11 @@ function loadPdfjs() {
 
 export function getPdfDocument(file) {
     if (!documents.has(file)) {
-        const promise = Promise.all([loadPdfjs(), mangaDeskBridge.readPdf(file)])
-            .then(([pdfjs, data]) => pdfjs.getDocument({data: data instanceof Uint8Array ? data : new Uint8Array(data)}).promise)
+        // The main process serves the file over studio-media:// with range
+        // support, so PDF.js fetches only the bytes it needs instead of holding
+        // the whole document in the renderer heap.
+        const promise = Promise.all([loadPdfjs(), mangaDeskBridge.pdfUrl(file)])
+            .then(([pdfjs, url]) => pdfjs.getDocument({url, disableRange: false, disableStream: false}).promise)
         documents.set(file, promise)
         promise.catch(() => documents.delete(file))
     }

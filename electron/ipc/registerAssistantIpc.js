@@ -1,5 +1,6 @@
 const crypto = require('crypto')
 const fs = require('fs/promises')
+const path = require('path')
 const {MediaDeliveryService, contentVersion} = require('../services/MediaDeliveryService')
 const {result} = require('./result')
 
@@ -103,6 +104,19 @@ function registerAssistantIpc({ipcMain, shell, clipboard, assistantWindowService
       if (item && validAssistant(event)) event.sender.send('assistant:asset-state', {...item, state: 'failed', error: error.message})
     })
   })
+  ipcMain.handle('assistant:cache-list', event => result(async () => {
+    if (!validAssistant(event) || !snapshot) throw new Error('Unauthorized')
+    return deliveryService.stats(snapshot.projectId)
+  }))
+  ipcMain.handle('assistant:cache-remove', (event, name) => result(async () => {
+    if (!validAssistant(event) || !snapshot) throw new Error('Unauthorized')
+    for (const [token, item] of tokens) if (path.basename(item.directory) === name) tokens.delete(token)
+    return deliveryService.remove(snapshot.projectId, name)
+  }))
+  ipcMain.handle('assistant:cache-prune', event => result(async () => {
+    if (!validAssistant(event) || !snapshot) throw new Error('Unauthorized')
+    return deliveryService.pruneTemporary(snapshot.projectId)
+  }))
   ipcMain.handle('assistant:open-asset-directory', (event, token) => result(async () => {
     const item = await checkToken(event, token)
     const error = await shell.openPath(item.directory)
