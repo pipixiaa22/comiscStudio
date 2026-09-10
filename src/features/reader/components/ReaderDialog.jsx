@@ -4,7 +4,12 @@ import {Button} from '../../../components/ui/button'
 import {useReaderController} from '../hooks/useReaderController'
 import {retryPdfDocument, releasePdfDocument} from '../services/PdfDocumentRepository'
 import {PageMedia} from './PageMedia'
-import {isUsableCrop, normalizeCrop} from '../../assets/model/crop'
+import {isUsableCrop} from '../../assets/model/crop'
+import {CROP_CURSORS, CROP_HANDLES, CROP_HANDLE_POSITIONS, cropFromDrag, moveCrop, resizeCrop} from '../../assets/model/cropDrag'
+
+// Matches the floor enforced by isUsableCrop so a drag can never produce a
+// selection the confirm step would immediately reject.
+const MIN_CROP_PX = 8
 
 export function ReaderDialog({
                                  item,
@@ -30,8 +35,9 @@ export function ReaderDialog({
     const [cropSelecting, setCropSelecting] = useState(false)
     const [cropError, setCropError] = useState('')
     const pane = useRef(null)
+    const imageBox = useRef(null)
     const drag = useRef(null)
-    const cropStart = useRef(null)
+    const cropAction = useRef(null)
     const activePdfPath = useRef(null)
     const controller = useReaderController({item, sources, fitMode, setFitMode, onSelect})
     const {
@@ -53,6 +59,8 @@ export function ReaderDialog({
     const width = Math.round(dimensions.width * scale)
     const height = Math.round(dimensions.height * scale)
     const title = active.kind === 'pdf-page' ? active.name.replace(/ · P\d+$/, '') : active.name
+    const draftCrop = cropDraft?.sourceId === active.sourceId ? cropDraft.crop : null
+    const hasDraft = Boolean(draftCrop && draftCrop.width > 0 && draftCrop.height > 0)
     activePdfPath.current = active.kind === 'pdf-page' ? active.pdfPath : null
 
     useEffect(() => {
@@ -68,6 +76,7 @@ export function ReaderDialog({
 
     useEffect(() => {
         onCropDraft?.(null);
+        cropAction.current = null;
         setCropSelecting(false);
         setCropError('')
     }, [active.path, onCropDraft])
@@ -148,42 +157,66 @@ export function ReaderDialog({
         drag.current = null;
         setDragging(false)
     }
+    // Crop points are always measured against the image box itself, so a drag
+    // that starts on a handle still maps to the same normalized coordinates.
     const cropPoint = event => {
-        const rect = event.currentTarget.getBoundingClientRect()
+        const rect = imageBox.current?.getBoundingClientRect()
+        if (!rect?.width || !rect?.height) return {x: 0, y: 0}
         return {
             x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
             y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height))
         }
     }
-    const cropDown = event => {
+    const cropMinimum = () => ({
+        width: Math.min(1, MIN_CROP_PX / Math.max(1, width)),
+        height: Math.min(1, MIN_CROP_PX / Math.max(1, height))
+    })
+    const beginCropAction = (event, action) => {
         event.stopPropagation();
+        event.preventDefault();
         onClearLocated?.();
         setCropError('');
-        cropStart.current = cropPoint(event);
-        event.currentTarget.setPointerCapture(event.pointerId);
-        onCropDraft?.({
-            sourceId: active.sourceId,
-            crop: {x: cropStart.current.x, y: cropStart.current.y, width: 0, height: 0}
-        })
+        setCropSelecting(true);
+        cropAction.current = {...action, start: cropPoint(event)};
+        imageBox.current?.setPointerCapture(event.pointerId)
+    }
+    const cropDown = event => beginCropAction(event, {mode: 'new', active: false})
+    const cropBodyDown = event => {
+        if (hasDraft) beginCropAction(event, {mode: 'move', origin: draftCrop})
+    }
+    const cropHandleDown = (event, handle) => {
+        if (hasDraft) beginCropAction(event, {mode: 'resize', handle, origin: draftCrop})
     }
     const cropMove = event => {
-        if (!cropStart.current) return
+        const action = cropAction.current
+        if (!action) return
         event.stopPropagation()
-        const end = cropPoint(event), start = cropStart.current
-        onCropDraft?.({
-            sourceId: active.sourceId,
-            crop: normalizeCrop({
-                x: Math.min(start.x, end.x),
-                y: Math.min(start.y, end.y),
-                width: Math.abs(end.x - start.x),
-                height: Math.abs(end.y - start.y)
+        const point = cropPoint(event)
+        if (action.mode === 'new') {
+            // A stray click must not throw away the selection being adjusted.
+            if (!action.active) {
+                const farEnough = Math.abs(point.x - action.start.x) * width >= MIN_CROP_PX || Math.abs(point.y - action.start.y) * height >= MIN_CROP_PX
+                if (!farEnough) return
+                action.active = true
+            }
+            onCropDraft?.({sourceId: active.sourceId, crop: cropFromDrag(action.start, point)})
+            return
+        }
+        if (action.mode === 'move') {
+            onCropDraft?.({
+                sourceId: active.sourceId,
+                crop: moveCrop(action.origin, {x: point.x - action.start.x, y: point.y - action.start.y})
             })
-        })
+            return
+        }
+        onCropDraft?.({sourceId: active.sourceId, crop: resizeCrop(action.origin, action.handle, point, cropMinimum())})
     }
     const cropUp = event => {
+        if (!cropAction.current) return
         event.stopPropagation();
-        cropStart.current = null;
-        setCropSelecting(false)
+        cropAction.current = null
+        // Crop mode stays active so the handles remain available for further
+        // adjustment without leaving and reopening the page.
     }
     const retryPage = () => {
         if (active.kind === 'pdf-page') retryPdfDocument(active.pdfPath)
@@ -234,22 +267,45 @@ export function ReaderDialog({
               className={`min-h-0 flex-1 overflow-auto bg-[#090c12] ${dragging ? 'cursor-grabbing select-none' : 'cursor-grab'}`}>
             <div className="grid min-h-full min-w-full place-items-center p-6" onPointerDown={onPointerDown}
                  onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}>
-                <div className="relative bg-white shadow-2xl" style={{width, height}}
+                <div ref={imageBox} className={`relative bg-white shadow-2xl ${cropSelecting ? 'cursor-crosshair' : ''}`} style={{width, height}}
                      onPointerDown={cropSelecting ? cropDown : undefined}
                      onPointerMove={cropSelecting ? cropMove : undefined}
-                     onPointerUp={cropSelecting ? cropUp : undefined}>
+                     onPointerUp={cropSelecting ? cropUp : undefined}
+                     onPointerCancel={cropSelecting ? cropUp : undefined}>
                     <PageMedia item={active} priority
                                scale={Math.min(Math.max(scale * (window.devicePixelRatio || 1), 0.5), 2.25)}
                                style={{width, height}} className="block" onDimensions={setDimensions}
                                onState={setMediaState} retry={retry}/>
-                    {cropDraft?.sourceId === active.sourceId && cropDraft.crop?.width > 0 && cropDraft.crop?.height > 0 &&
-                        <div className="pointer-events-none absolute border-2 border-orange-400 bg-orange-300/20"
+                    {cropSelecting && hasDraft && <>
+                        <div className="pointer-events-none absolute inset-x-0 top-0 bg-slate-950/55"
+                             style={{height: `${draftCrop.y * 100}%`}}/>
+                        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-slate-950/55"
+                             style={{height: `${Math.max(0, 1 - draftCrop.y - draftCrop.height) * 100}%`}}/>
+                        <div className="pointer-events-none absolute left-0 bg-slate-950/55"
+                             style={{top: `${draftCrop.y * 100}%`, width: `${draftCrop.x * 100}%`, height: `${draftCrop.height * 100}%`}}/>
+                        <div className="pointer-events-none absolute right-0 bg-slate-950/55"
+                             style={{top: `${draftCrop.y * 100}%`, width: `${Math.max(0, 1 - draftCrop.x - draftCrop.width) * 100}%`, height: `${draftCrop.height * 100}%`}}/>
+                    </>}
+                    {hasDraft &&
+                        <div className={`absolute border-2 border-orange-400 bg-orange-300/20 ${cropSelecting ? 'cursor-move' : 'pointer-events-none'}`}
                              style={{
-                                 left: `${cropDraft.crop.x * 100}%`,
-                                 top: `${cropDraft.crop.y * 100}%`,
-                                 width: `${cropDraft.crop.width * 100}%`,
-                                 height: `${cropDraft.crop.height * 100}%`
-                             }}/>}
+                                 left: `${draftCrop.x * 100}%`,
+                                 top: `${draftCrop.y * 100}%`,
+                                 width: `${draftCrop.width * 100}%`,
+                                 height: `${draftCrop.height * 100}%`
+                             }}
+                             onPointerDown={cropBodyDown}>
+                            {cropSelecting && <>
+                                <div className="pointer-events-none absolute inset-y-0 left-1/3 w-px bg-white/35"/>
+                                <div className="pointer-events-none absolute inset-y-0 left-2/3 w-px bg-white/35"/>
+                                <div className="pointer-events-none absolute inset-x-0 top-1/3 h-px bg-white/35"/>
+                                <div className="pointer-events-none absolute inset-x-0 top-2/3 h-px bg-white/35"/>
+                                {CROP_HANDLES.map(handle => <div key={handle} aria-hidden
+                                                                 onPointerDown={event => cropHandleDown(event, handle)}
+                                                                 style={{...CROP_HANDLE_POSITIONS[handle], cursor: CROP_CURSORS[handle]}}
+                                                                 className="absolute h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-sm border border-orange-500 bg-white shadow"/>)}
+                            </>}
+                        </div>}
                     {locatedCrop?.sourceId === active.sourceId &&
                         <div className="pointer-events-none absolute border-2 border-cyan-300 bg-cyan-300/10" style={{
                             left: `${locatedCrop.crop.x * 100}%`,
@@ -265,8 +321,8 @@ export function ReaderDialog({
                 </div>
             </div>
         </main>
-        <footer className="border-t border-slate-800 px-4 py-2 text-center text-xs text-slate-400">Enter 加入素材 · 框选后
-            Enter 确认 Crop · Esc 取消选区 · Ctrl + 滚轮缩放 · ← / → 翻页
+        <footer className="border-t border-slate-800 px-4 py-2 text-center text-xs text-slate-400">Enter 加入素材 · 框选后拖动控制点可缩放、拖动选区可移动
+            · Enter 确认 Crop · Esc 取消选区 · Ctrl + 滚轮缩放 · ← / → 翻页
         </footer>
     </div>
 }
