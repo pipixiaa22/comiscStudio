@@ -4,7 +4,7 @@ const path = require('path')
 const FALLBACKS = ['/opt/homebrew/bin/ffprobe', '/usr/local/bin/ffprobe', '/usr/bin/ffprobe']
 
 async function findFfprobeBinary({packaged = false, resourcesPath = process.resourcesPath, binary} = {}) {
-  let resolved = binary || (!packaged && process.env.COMISC_FFPROBE_PATH) || path.join(resourcesPath || '', 'media-tools', process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe')
+  let resolved = binary || process.env.COMISC_FFPROBE_PATH || path.join(resourcesPath || '', 'media-tools', process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe')
   try {
     await fs.access(resolved)
   } catch {

@@ -6,5 +6,5 @@ export function ScrollAreaBox({className, children, viewportRef, onScroll}) {
         ref={viewportRef} onScroll={onScroll}
         className="h-full w-full rounded-[inherit]">{children}</ScrollArea.Viewport><ScrollArea.Scrollbar
         className="flex w-2 touch-none p-px" orientation="vertical"><ScrollArea.Thumb
-        className="flex-1 rounded-full bg-slate-600"/></ScrollArea.Scrollbar></ScrollArea.Root>
+        className="flex-1 rounded-full bg-scrollbar"/></ScrollArea.Scrollbar></ScrollArea.Root>
 }

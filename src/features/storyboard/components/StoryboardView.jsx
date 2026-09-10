@@ -50,8 +50,8 @@ export function StoryboardView({project, revision, reloadToken, sourcesById, res
     const visible = project.blocks.filter(block => filter === 'all' || checkByBlock.get(block.id)?.some(issue => filter === 'problems' || issue.code === filter))
     const problemBlocks = checks.filter(check => check.issues.length).length
     const issueCount = checks.reduce((total, check) => total + check.issues.length, 0)
-    return <main className="min-h-0 flex-1 overflow-auto bg-[#0d1118] p-5">
-        <div className="sticky top-0 z-10 mb-4 rounded border border-slate-700 bg-[#151924]/95 p-3">
+    return <main className="min-h-0 flex-1 overflow-auto bg-background p-5">
+        <div className="sticky top-0 z-10 mb-4 rounded border border-border bg-background/95 p-3">
             <div className="flex items-center gap-3"><h1 className="text-lg font-bold">Storyboard</h1><span
                 className="text-xs text-amber-300">{problemBlocks} 个 Block 有问题 · {issueCount} 条</span><select
                 value={filter} onChange={event => setFilter(event.target.value)}
@@ -69,7 +69,7 @@ export function StoryboardView({project, revision, reloadToken, sourcesById, res
         <div className="mx-auto max-w-5xl space-y-4">{visible.map(block => {
             const issues = checkByBlock.get(block.id) || [];
             return <article id={`story-${block.id}`} key={block.id}
-                            className="scroll-mt-24 rounded-lg border border-slate-700 bg-[#171c26] p-4">
+                            className="scroll-mt-24 rounded-lg border border-border bg-card p-4">
                 <div className="flex items-center"><b
                     className="text-orange-300">#{pageNumber(project.blocks.indexOf(block))}</b><span
                     className="ml-3 text-xs text-slate-500">{block.assets.length} 项素材</span><Button

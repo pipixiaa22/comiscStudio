@@ -13,6 +13,7 @@ function formatBytes(bytes) {
 export function CapCutAssistant() {
     const [snapshot, setSnapshot] = useState(null), [blockId, setBlockId] = useState(null), [topmost, setTopmost] = useState(true), [notice, setNotice] = useState('')
     const [cacheOpen, setCacheOpen] = useState(false), [cache, setCache] = useState(null)
+    useEffect(() => { mangaDeskBridge.settings.get().then(settings => { document.documentElement.dataset.theme = settings.theme }).catch(() => {}) }, [])
     useEffect(() => {
         const off = mangaDeskBridge.assistant.onSnapshot(next => {
             setSnapshot(current => ({...next, blocks: next.blocks.map(block => ({...block, assets: block.assets.map(asset => {
@@ -117,10 +118,10 @@ export function CapCutAssistant() {
         return () => window.removeEventListener('keydown', keydown)
     }, [snapshot, index, blockId])
     if (!snapshot) return <main
-        className="grid min-h-screen place-items-center bg-[#11141c] text-sm text-slate-400">正在连接主工作区…</main>
-    if (!block) return <main className="grid min-h-screen place-items-center bg-[#11141c] text-sm text-slate-400">暂无
+        className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">正在连接主工作区…</main>
+    if (!block) return <main className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">暂无
         Block</main>
-    return <main className="flex h-screen flex-col bg-[#11141c] p-4 text-slate-100">
+    return <main className="flex h-screen flex-col bg-background p-4 text-foreground">
         <header className="flex items-center gap-2">
             <div className="min-w-0"><b className="block truncate">{snapshot.projectName}</b><span
                 className="text-xs text-slate-400">#{String(index + 1).padStart(3, '0')} / {snapshot.blocks.length}</span>

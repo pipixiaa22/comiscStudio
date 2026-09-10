@@ -10,7 +10,7 @@ export function UsageBadge({usage, blocks, onSelectReference}) {
         return map
     }, new Map()).values()]
     return <details className="relative">
-        <summary className="cursor-pointer list-none rounded bg-emerald-700 px-1.5 py-0.5 text-[10px] text-white"
+        <summary className="cursor-pointer list-none rounded bg-foreground px-1.5 py-0.5 text-[10px] text-background"
                  onClick={event => event.stopPropagation()}>●{usage.count > 1 ? usage.count : ''}</summary>
         <div
             className="absolute right-0 z-20 mt-1 w-40 rounded border border-slate-600 bg-slate-950 p-1 shadow-xl">{grouped.map(reference => {

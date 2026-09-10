@@ -48,7 +48,8 @@ contextBridge.exposeInMainWorld('mangaDesk', {
     archiveProject: (id, archived) => ipcRenderer.invoke('project:archive', id, archived),
     relocateSources: (id, replacements) => ipcRenderer.invoke('project:relocate-sources', id, replacements),
     relocateSource: (id, input) => ipcRenderer.invoke('project:relocate-source', id, input),
-    copyText: text => ipcRenderer.invoke('system:copy-text', text)
+    copyText: text => ipcRenderer.invoke('system:copy-text', text),
+    settings: {get: () => ipcRenderer.invoke('settings:get'), save: input => ipcRenderer.invoke('settings:save', input), chooseMediaTool: key => ipcRenderer.invoke('settings:choose-media-tool', key)}
     ,
     assistant: {
         open: () => ipcRenderer.invoke('assistant:open'),

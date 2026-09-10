@@ -35,10 +35,10 @@ export const BlockStatusPanel = memo(function BlockStatusPanel({
     const missing = requiredStatuses.filter(([key]) => !(narrationMode === 'voice' && key === 'voiced' ? (block.voice?.narrationRequired === false || Boolean(block.voice?.activeTakeId)) : block.status[key]))
     const nextTodo = missing.find(([key]) => key === 'scriptDone') ? 'text' : missing.find(([key]) => key === 'assetDone') ? 'assets' : narrationMode === 'voice' ? 'voice' : 'text'
     const todoLabel = {text: '文案', assets: '配图', voice: '录音'}[nextTodo]
-    return <aside className="min-h-0 overflow-auto bg-[#181c25] p-5" onDragOver={event => event.preventDefault()}
+    return <aside className="min-h-0 overflow-auto bg-surface p-5" onDragOver={event => event.preventDefault()}
                   onDrop={dropBasket}>
         <div className="flex items-center justify-between gap-2"><h2 className="text-base font-semibold">当前段检查器</h2><div className="ml-auto flex items-center gap-1"><Button size="icon" variant="ghost" aria-label="撤销" title="撤销 (Ctrl/Cmd+Z)" disabled={!undoCount} onClick={commands.undo}><Undo2 className="h-4 w-4"/></Button><Button size="icon" variant="ghost" aria-label="重做" title="重做 (Ctrl/Cmd+Shift+Z)" disabled={!redoCount} onClick={commands.redo}><Redo2 className="h-4 w-4"/></Button><span className="ml-1 text-xs text-slate-500">#{pageNumber(index)} / {total}</span></div></div>
-        <Card className="mt-4 border-slate-700 bg-[#1c2230]"><CardContent className="space-y-4">
+        <Card className="mt-4 border-border bg-card"><CardContent className="space-y-4">
             <div><span className="text-xs font-medium text-slate-400">当前段完成度</span>
                 <div className="mt-1 flex items-end gap-2"><div className="text-2xl font-bold">{requiredStatuses.length - missing.length}/{requiredStatuses.length}</div><span className="mb-1 text-xs text-slate-400">{missing.length ? `还缺 ${missing.map(([, label]) => label).join('、')}` : '已满足当前要求'}</span></div>
             </div>

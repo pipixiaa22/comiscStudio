@@ -18,6 +18,7 @@ import {createId} from './shared/lib/ids'
 import {hydrateSources} from './features/project/projectSources'
 import {ProjectCenter} from './features/project/components/ProjectCenter'
 import {usePersistentState} from './shared/hooks/usePersistentState'
+import {SettingsView} from './features/settings/components/SettingsView'
 
 export default function App() {
     const {state, blocks, currentBlock, currentBlockIndex, commands} = useProjectStore()
@@ -38,8 +39,11 @@ export default function App() {
     const [storyReturnBlockId, setStoryReturnBlockId] = useState(null)
     const [projectToken, setProjectToken] = useState(0)
     const [error, setError] = useState('')
+    const [theme, setTheme] = useState('light')
     const origin = useRef()
     const project = state.project
+    useEffect(() => { mangaDeskBridge.settings.get().then(settings => setTheme(settings.theme)).catch(() => {}) }, [])
+    useEffect(() => { document.documentElement.dataset.theme = theme }, [theme])
     const latestProject = useRef(project)
     latestProject.current = project
     const sourcesById = useMemo(() => new Map([...sources.filter(source => source.sourceId).map(source => [source.sourceId, source]), ...(project?.sources || []).filter(source => source.mediaType === 'video').map(source => [source.id, source])]), [sources, project?.sources])
@@ -263,16 +267,17 @@ export default function App() {
     }), [save, commands, selectedSource, cropDraft, selectedAssetId, currentBlock, toggleFavorite, filteredSources, openReader, chooseSource])
     useShortcutScope({enabled: !readerOpen && view === 'workspace' && project?.workspace.activeMediaTab !== 'video', bindings})
     const readerKey = selectedSource?.pdfPath || 'images'
-    return <div className="flex h-full min-h-0 flex-col bg-[#0f1219]">
+    return <div className="flex h-full min-h-0 flex-col bg-background">
         <AppHeader onMediaTab={activeMediaTab => commands.setVideoWorkspace({activeMediaTab})} project={project} saveStatus={{status: state.saveStatus, error: state.saveError}} view={view}
                    onViewChange={setView} onSave={save} onImport={importSource} onExport={() => setView('export')}
                    onAppendSource={appendSource}
                    onProjectCenter={() => setView('projects')}
                    onAssistant={() => window.mangaDesk?.assistant && mangaDeskBridge.assistant.open()}
+                   onSettings={() => setView('settings')}
                    narrationMode={project?.narration?.mode || 'text'} onNarrationMode={commands.setNarrationMode}/>
         {(error || state.notice) && <div role="status"
-                                         className="bg-slate-800 px-4 py-2 text-center text-sm text-slate-200">{error || state.notice}</div>}
-        {view === 'projects' ? <ProjectCenter onOpen={openProject} onClose={() => setView('workspace')}/> : !project ?
+                                         className="border-b border-border bg-muted px-4 py-2 text-center text-sm text-foreground">{error || state.notice}</div>}
+        {view === 'settings' ? <SettingsView onThemeChange={setTheme} onClose={() => setView('workspace')}/> : view === 'projects' ? <ProjectCenter onOpen={openProject} onClose={() => setView('workspace')}/> : !project ?
             <Welcome onImport={importSource}/> : view === 'export' ?
                 <ExportView project={project} revision={state.revision} onSavePreset={commands.saveExportPreset} onRemovePreset={commands.removeExportPreset} onRecordDelivery={commands.recordDelivery}
                             onClose={() => setView('workspace')}/> : view === 'storyboard' ?

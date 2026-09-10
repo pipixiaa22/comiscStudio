@@ -1,9 +1,11 @@
 {
 	"main": "main.js",
 	"scripts": {
-		"start": "vite build && electron .",
-		"dev": "vite",
-		"build": "vite build",
+		"start": "pnpm theme:generate && vite build && electron .",
+		"dev": "pnpm theme:generate && vite",
+		"build": "pnpm theme:generate && vite build",
+		"theme:generate": "node scripts/generate-theme.cjs",
+		"theme:check": "node scripts/generate-theme.cjs --check",
 		"test": "node --test tests/*.test.cjs",
 		"package:check": "node scripts/package-app.cjs --check",
 		"package:app": "node scripts/package-app.cjs"

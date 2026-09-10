@@ -75,9 +75,9 @@ export const MangaBrowser = memo(function MangaBrowser({
     }, [selectedSource?.path, sources, metrics.columns, metrics.rowStride, metrics.cardHeight])
     const previewHeight = previewHeightFor(box.width)
     const stepSize = direction => onThumbSize?.(stepThumbSize(thumbSize, direction))
-    return <aside className="flex min-h-0 flex-col border-r border-slate-700 bg-[#181c25]">
+    return <aside className="flex min-h-0 flex-col border-r border-border bg-surface">
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-700 px-4 py-2">
-            <LayoutGrid className="h-4 w-4 shrink-0 text-orange-300"/><b className="shrink-0 text-sm">漫画浏览器</b>
+            <LayoutGrid className="h-4 w-4 shrink-0 text-foreground"/><b className="shrink-0 text-sm">漫画浏览器</b>
             <div className="ml-auto flex shrink-0 items-center gap-1">
                 <Button size="sm" variant={view === 'all' ? 'default' : 'ghost'} onClick={() => onViewChange('all')}>全部</Button>
                 <Button size="sm" variant={view === 'favorites' ? 'default' : 'ghost'} onClick={() => onViewChange('favorites')}>收藏</Button>
@@ -92,7 +92,7 @@ export const MangaBrowser = memo(function MangaBrowser({
                 className="absolute left-2 top-2 h-3.5 w-3.5 text-slate-500"/><input value={search}
                                                                                      onChange={event => onSearchChange(event.target.value)}
                                                                                      placeholder="页码 / 文件名"
-                                                                                     className="h-9 w-full rounded border border-slate-700 bg-slate-900 pl-7 text-xs outline-none focus:border-orange-400"/>
+                                                                                     className="h-9 w-full rounded border border-input bg-background pl-7 text-xs outline-none focus:border-foreground"/>
             </div>
         </div>
         {selectedSource && <div className="m-3 overflow-hidden rounded border border-slate-800 bg-black">
@@ -125,7 +125,7 @@ export const MangaBrowser = memo(function MangaBrowser({
                     const selected = selectedSource?.path === source.path
                     return <div key={source.path} ref={selected ? selectedCard : null}
                                 style={{height: metrics.cardHeight}}
-                                className={`group relative rounded-lg border p-1.5 transition-colors ${selected ? 'border-orange-400 bg-orange-400/10' : 'border-transparent bg-slate-800/70 hover:border-slate-600'}`}>
+                                className={`group relative rounded-lg border p-1.5 transition-colors ${selected ? 'border-foreground bg-selected' : 'border-transparent bg-card hover:border-input'}`}>
                         <button style={{height: thumbHeight + 22}} className="flex w-full flex-col overflow-hidden text-left" onClick={() => onSelectSource(source)}
                                 onDoubleClick={() => onAddAsset(source.sourceId)}>
                             <div className="grid shrink-0 place-items-center overflow-hidden rounded bg-black/25" style={{height: thumbHeight}}>
@@ -138,7 +138,7 @@ export const MangaBrowser = memo(function MangaBrowser({
                                 event.stopPropagation();
                                 onToggleFavorite(source.sourceId)
                             }} aria-label="切换收藏"><Star
-                                className={`h-3.5 w-3.5 ${favorite ? 'fill-amber-400 text-amber-400' : 'text-white'}`}/>
+                                className={`h-3.5 w-3.5 ${favorite ? 'fill-foreground text-foreground' : 'text-white'}`}/>
                             </button>
                         </div>
                         <button className="absolute bottom-8 left-2 rounded bg-slate-950/85 p-1.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100" onClick={event => { event.stopPropagation(); onAddBasket(source.sourceId) }} aria-label="暂存素材" title="暂存素材"><ShoppingBasket className="h-3.5 w-3.5"/></button>

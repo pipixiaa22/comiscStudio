@@ -71,8 +71,8 @@ export function ExportView({project, revision, onClose, onSavePreset, onRemovePr
     }, [progress.stage, progress.output, job, baseline, onRecordDelivery])
     const running = ['validating', 'rendering', 'writingDocuments', 'finalizing'].includes(progress.stage)
     const completed = progress.stage === 'succeeded'
-    return <main className="min-h-0 flex-1 overflow-auto bg-[#0d1118] p-6">
-        <div className="mx-auto max-w-3xl rounded-lg border border-slate-700 bg-[#171c26] p-5">
+    return <main className="min-h-0 flex-1 overflow-auto bg-background p-6">
+        <div className="mx-auto max-w-3xl rounded-lg border border-border bg-card p-5">
             <div className="flex items-center">
                 <div><h1 className="text-xl font-bold">导出素材包</h1><p
                     className="mt-1 text-sm text-slate-400">导出固定快照；之后的修改不会混入本次产物。</p></div>

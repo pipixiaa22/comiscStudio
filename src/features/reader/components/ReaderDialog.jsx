@@ -223,8 +223,8 @@ export function ReaderDialog({
         setRetry(value => value + 1)
     }
 
-    return <div className="fixed inset-0 z-30 flex flex-col bg-[#090c12]" role="dialog" aria-modal="true">
-        <header className="flex min-h-12 flex-wrap items-center gap-2 border-b border-slate-700 bg-[#151924] px-4 py-2">
+    return <div className="fixed inset-0 z-30 flex flex-col bg-media-background text-media-foreground" role="dialog" aria-modal="true">
+        <header className="flex min-h-12 flex-wrap items-center gap-2 border-b border-border bg-background px-4 py-2 text-foreground">
             <b className="mr-auto max-w-64 truncate text-sm" title={title}>{title}</b>
             <Button size="sm" variant="secondary" disabled={!pageIndex}
                     onClick={() => selectPage(pageIndex - 1)}><ChevronLeft className="h-4 w-4"/>上一页</Button>
@@ -264,7 +264,7 @@ export function ReaderDialog({
         {(pageError || cropError) && <div role="status"
                                           className="bg-red-950 px-4 py-1 text-center text-xs text-red-200">{pageError || cropError}</div>}
         <main ref={pane} onWheel={handleWheel}
-              className={`min-h-0 flex-1 overflow-auto bg-[#090c12] ${dragging ? 'cursor-grabbing select-none' : 'cursor-grab'}`}>
+              className={`min-h-0 flex-1 overflow-auto bg-media-background ${dragging ? 'cursor-grabbing select-none' : 'cursor-grab'}`}>
             <div className="grid min-h-full min-w-full place-items-center p-6" onPointerDown={onPointerDown}
                  onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}>
                 <div ref={imageBox} className={`relative bg-white shadow-2xl ${cropSelecting ? 'cursor-crosshair' : ''}`} style={{width, height}}
@@ -287,7 +287,7 @@ export function ReaderDialog({
                              style={{top: `${draftCrop.y * 100}%`, width: `${Math.max(0, 1 - draftCrop.x - draftCrop.width) * 100}%`, height: `${draftCrop.height * 100}%`}}/>
                     </>}
                     {hasDraft &&
-                        <div className={`absolute border-2 border-orange-400 bg-orange-300/20 ${cropSelecting ? 'cursor-move' : 'pointer-events-none'}`}
+                        <div className={`absolute border-2 border-white bg-black/20 shadow-[0_0_0_1px_hsl(var(--foreground))] ${cropSelecting ? 'cursor-move' : 'pointer-events-none'}`}
                              style={{
                                  left: `${draftCrop.x * 100}%`,
                                  top: `${draftCrop.y * 100}%`,
@@ -303,7 +303,7 @@ export function ReaderDialog({
                                 {CROP_HANDLES.map(handle => <div key={handle} aria-hidden
                                                                  onPointerDown={event => cropHandleDown(event, handle)}
                                                                  style={{...CROP_HANDLE_POSITIONS[handle], cursor: CROP_CURSORS[handle]}}
-                                                                 className="absolute h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-sm border border-orange-500 bg-white shadow"/>)}
+                                                                 className="absolute h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-sm border border-foreground bg-white shadow"/>)}
                             </>}
                         </div>}
                     {locatedCrop?.sourceId === active.sourceId &&

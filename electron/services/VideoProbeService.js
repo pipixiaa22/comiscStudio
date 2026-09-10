@@ -34,8 +34,9 @@ function parseVideoProbe(data, file, stat) {
 
 class VideoProbeService {
   constructor({packaged = false, resourcesPath = process.resourcesPath, binary} = {}) {
-    this.binary = binary || (!packaged && process.env.COMISC_FFPROBE_PATH) || path.join(resourcesPath || '', 'media-tools', process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe')
+    this.binary = binary
     this.packaged = packaged
+    this.resourcesPath = resourcesPath
   }
   async probe(file) {
     const binary = await findFfprobeBinary(this)

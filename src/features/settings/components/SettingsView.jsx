@@ -1,0 +1,19 @@
+import {Check, FolderCog, Palette, X} from 'lucide-react'
+import {useEffect, useState} from 'react'
+import {Button} from '../../../components/ui/button'
+import {mangaDeskBridge} from '../../../shared/bridge/mangaDeskBridge'
+
+export function SettingsView({onClose, onThemeChange}) {
+  const [settings, setSettings] = useState(null), [saving, setSaving] = useState(false), [message, setMessage] = useState('')
+  useEffect(() => { mangaDeskBridge.settings.get().then(setSettings).catch(error => setMessage(error.message)) }, [])
+  const update = async patch => {
+    if (!settings) return
+    setSaving(true); setMessage('')
+    try { const next = await mangaDeskBridge.settings.save({...settings, ...patch}); setSettings(next); if (patch.theme) onThemeChange(next.theme); setMessage('设置已保存') } catch (error) { setMessage(error.message || '保存设置失败') } finally { setSaving(false) }
+  }
+  const pick = async key => { try { const file = await mangaDeskBridge.settings.chooseMediaTool(key); if (file) await update({[key]: file}) } catch (error) { setMessage(error.message || '选择文件失败') } }
+  return <main className="min-h-0 flex-1 overflow-auto bg-background p-6"><section className="mx-auto max-w-3xl"><div className="flex items-center"><div><h1 className="text-xl font-bold">设置</h1><p className="mt-1 text-sm text-muted-foreground">应用外观与本机媒体工具配置。</p></div><Button className="ml-auto" variant="secondary" onClick={onClose}><X className="h-4 w-4"/>返回工作区</Button></div>
+    {!settings ? <p className="mt-8 text-sm text-muted-foreground">正在读取设置…</p> : <div className="mt-6 space-y-5"><section className="rounded-xl border border-border bg-card p-5"><div className="flex items-center gap-2"><Palette className="h-5 w-5"/><div><h2 className="font-semibold">界面主题</h2><p className="mt-1 text-sm text-muted-foreground">选择适合当前环境的工作台外观。</p></div></div><div className="mt-4 grid gap-3 sm:grid-cols-2">{[['light', '浅色'], ['dark', '深色']].map(([value, label]) => <button key={value} onClick={() => update({theme: value})} className={`rounded-lg border p-4 text-left transition-colors ${settings.theme === value ? 'border-foreground bg-selected' : 'border-border hover:bg-accent'}`} aria-pressed={settings.theme === value}><span className={`mb-3 block h-12 rounded ${value === 'light' ? 'bg-background ring-1 ring-border' : 'bg-media-background'}`}/><span className="flex items-center gap-2 text-sm font-medium">{settings.theme === value && <Check className="h-4 w-4"/>}{label}</span></button>)}</div></section>
+      <section className="rounded-xl border border-border bg-card p-5"><div className="flex items-center gap-2"><FolderCog className="h-5 w-5"/><div><h2 className="font-semibold">FFmpeg 工具路径</h2><p className="mt-1 text-sm text-muted-foreground">用于视频探测、逐帧预览和导出。留空时使用应用内置或系统默认工具。</p></div></div>{[['ffmpegPath', 'FFmpeg'], ['ffprobePath', 'FFprobe']].map(([key, label]) => <label key={key} className="mt-4 block text-sm font-medium">{label}<div className="mt-1 flex gap-2"><input readOnly value={settings[key] || ''} placeholder={`使用默认 ${label}`} className="h-9 min-w-0 flex-1 rounded border border-input bg-background px-3 text-sm font-normal"/><Button variant="outline" size="sm" onClick={() => pick(key)} disabled={saving}>选择文件</Button><Button variant="ghost" size="sm" onClick={() => update({[key]: ''})} disabled={!settings[key] || saving}>清除</Button></div></label>)}<p className="mt-4 text-xs text-muted-foreground">修改路径后，新发起的视频任务会使用新路径；已在执行的任务不受影响。</p></section>
+      {message && <p role="status" className="text-sm text-muted-foreground">{message}</p>}</div>}</section></main>
+}

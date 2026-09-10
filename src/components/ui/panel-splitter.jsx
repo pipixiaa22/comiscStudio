@@ -36,6 +36,6 @@ export function PanelSplitter({value, min, max, onChange, onReset, label = '调�
                 title="拖动调整宽度 · 双击复位"
                 className="workspace-browser-splitter group absolute top-0 z-20 h-full w-2 cursor-col-resize touch-none focus:outline-none"
                 style={{left: `${value}px`}}>
-        <div className="h-full w-px bg-slate-700/50 transition-colors group-hover:bg-orange-400/80 group-focus:bg-orange-400"/>
+        <div className="h-full w-px bg-border transition-colors group-hover:bg-foreground/70 group-focus:bg-foreground"/>
     </div>
 }
