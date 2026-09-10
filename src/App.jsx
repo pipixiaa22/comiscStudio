@@ -17,6 +17,7 @@ import {prepareSourceAdditions} from './shared/domain/mediaAsset'
 import {createId} from './shared/lib/ids'
 import {hydrateSources} from './features/project/projectSources'
 import {ProjectCenter} from './features/project/components/ProjectCenter'
+import {usePersistentState} from './shared/hooks/usePersistentState'
 
 export default function App() {
     const {state, blocks, currentBlock, currentBlockIndex, commands} = useProjectStore()
@@ -32,6 +33,7 @@ export default function App() {
     const [locatedCrop, setLocatedCrop] = useState(null)
     const [selectedAssetId, setSelectedAssetId] = useState(null)
     const [browserView, setBrowserView] = useState('all')
+    const [thumbSize, setThumbSize] = usePersistentState('mangadesk.browser.thumbSize', 'm')
     const [view, setView] = useState('workspace')
     const [storyReturnBlockId, setStoryReturnBlockId] = useState(null)
     const [projectToken, setProjectToken] = useState(0)
@@ -301,7 +303,8 @@ export default function App() {
                                    selectedAssetId={selectedAssetId} onSelectAsset={setSelectedAssetId}
                                    block={currentBlock}
                                    blockIndex={currentBlockIndex} blocks={blocks} commands={commands}
-                                   undoCount={state.undo.length} redoCount={state.redo.length}/>}
+                                   undoCount={state.undo.length} redoCount={state.redo.length}
+                                   thumbSize={thumbSize} onThumbSize={setThumbSize}/>}
         {readerOpen && selectedSource &&
             <ReaderDialog item={selectedSource} sources={sources} fitMode={readerPrefs[readerKey] || 'page'}
                           setFitMode={fitMode => setReaderPrefs(preferences => ({
