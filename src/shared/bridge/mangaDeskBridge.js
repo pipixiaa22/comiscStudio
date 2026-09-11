@@ -57,7 +57,7 @@ export const mangaDeskBridge = {
         restoreTake: async input => unwrap(await bridge().voice.restoreTake(input))
     },
     copyText: text => bridge().copyText(text),
-    settings: {get: async () => unwrap(await bridge().settings.get()), save: async input => unwrap(await bridge().settings.save(input)), chooseMediaTool: async key => unwrap(await bridge().settings.chooseMediaTool(key))}
+    settings: {get: async () => unwrap(await bridge().settings.get()), save: async input => unwrap(await bridge().settings.save(input)), chooseMediaTool: async key => unwrap(await bridge().settings.chooseMediaTool(key)), mediaToolStatus: async () => unwrap(await bridge().settings.mediaToolStatus()), installMediaTools: async () => unwrap(await bridge().settings.installMediaTools()), onMediaToolProgress: callback => bridge().settings.onMediaToolProgress(callback)}
     ,
     assistant: {
         open: async () => unwrap(await bridge().assistant.open()),

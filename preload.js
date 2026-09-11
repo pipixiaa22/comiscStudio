@@ -49,7 +49,7 @@ contextBridge.exposeInMainWorld('mangaDesk', {
     relocateSources: (id, replacements) => ipcRenderer.invoke('project:relocate-sources', id, replacements),
     relocateSource: (id, input) => ipcRenderer.invoke('project:relocate-source', id, input),
     copyText: text => ipcRenderer.invoke('system:copy-text', text),
-    settings: {get: () => ipcRenderer.invoke('settings:get'), save: input => ipcRenderer.invoke('settings:save', input), chooseMediaTool: key => ipcRenderer.invoke('settings:choose-media-tool', key)}
+    settings: {get: () => ipcRenderer.invoke('settings:get'), save: input => ipcRenderer.invoke('settings:save', input), chooseMediaTool: key => ipcRenderer.invoke('settings:choose-media-tool', key), mediaToolStatus: () => ipcRenderer.invoke('settings:media-tool-status'), installMediaTools: () => ipcRenderer.invoke('settings:install-media-tools'), onMediaToolProgress: callback => { const listener = (_, value) => callback(value); ipcRenderer.on('settings:media-tool-progress', listener); return () => ipcRenderer.removeListener('settings:media-tool-progress', listener) }}
     ,
     assistant: {
         open: () => ipcRenderer.invoke('assistant:open'),

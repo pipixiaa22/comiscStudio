@@ -1,4 +1,4 @@
-function registerSystemIpc({ ipcMain, clipboard, dialog, settingsService }) {
+function registerSystemIpc({ ipcMain, clipboard, dialog, settingsService, mediaToolInstaller }) {
   ipcMain.handle('system:copy-text', (_, text) => { clipboard.writeText(String(text || '')); return { ok: true } })
   ipcMain.handle('settings:get', async () => ({ok: true, data: settingsService.get()}))
   ipcMain.handle('settings:save', async (_, input) => {
@@ -14,6 +14,8 @@ function registerSystemIpc({ ipcMain, clipboard, dialog, settingsService }) {
     const result = await dialog.showOpenDialog({title: `选择 ${key === 'ffmpegPath' ? 'FFmpeg' : 'FFprobe'} 可执行文件`, properties: ['openFile']})
     return {ok: true, data: result.canceled ? '' : result.filePaths[0]}
   })
+  ipcMain.handle('settings:media-tool-status', async () => ({ok: true, data: await mediaToolInstaller.status()}))
+  ipcMain.handle('settings:install-media-tools', async event => { try { return {ok: true, data: await mediaToolInstaller.install(progress => event.sender.send('settings:media-tool-progress', progress))} } catch (error) { return {ok: false, error: {message: error.message}} } })
 }
 
 module.exports = { registerSystemIpc }

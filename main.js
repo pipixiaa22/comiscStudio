@@ -21,6 +21,7 @@ const {MediaDeliveryService} = require('./electron/services/MediaDeliveryService
 const {checkMediaToolchain} = require('./electron/services/MediaToolchainService')
 const {LocalMediaService} = require('./electron/services/LocalMediaService')
 const {AppSettingsService} = require('./electron/services/AppSettingsService')
+const {MediaToolInstaller} = require('./electron/services/MediaToolInstaller')
 const themeTokens = require('./theme/tokens.json')
 const windowBackground = themeTokens.themes?.light?.colors?.background || '#FFFFFF'
 protocol.registerSchemesAsPrivileged([
@@ -67,7 +68,7 @@ app.whenReady().then(async () => {
   assistantWindowService = new AssistantWindowService({ app, preload: path.join(__dirname, 'preload.js'), indexFile: path.join(__dirname, 'dist', 'index.html') })
   registerProjectIpc({ ipcMain, projectService, sourceScanService, exportService })
   registerSourceIpc({ ipcMain, dialog, sourceScanService })
-  registerSystemIpc({ ipcMain, clipboard, dialog, settingsService })
+  registerSystemIpc({ ipcMain, clipboard, dialog, settingsService, mediaToolInstaller: new MediaToolInstaller(app.getPath('userData'), settingsService) })
   registerExportIpc({ ipcMain, dialog, shell, exportService })
   registerVoiceIpc({ ipcMain, voiceRecordingService, localMediaService })
   assistantIpc = registerAssistantIpc({ ipcMain, shell, clipboard, assistantWindowService, projectService, mainWindow: () => mainWindow,
